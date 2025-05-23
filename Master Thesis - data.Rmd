@@ -1,0 +1,543 @@
+---
+title: "Master Thesis - data"
+author: "Marco Boso"
+date: "2025-05-14"
+output: html_document
+---
+
+Libraries 
+```{r}
+library(rvest)
+library(dplyr)
+library(purrr)
+library(stringr)
+library(tidyr)
+library(readr)
+library(httr)
+library(jsonlite)
+```
+
+Denmark
+```{r}
+url <- "https://studyindenmark.dk/portal"
+
+webpage <- read_html(url)
+
+rows <- webpage |> 
+  html_nodes("table#program-results tbody tr")
+
+if (length(rows) > 0) {
+  denmark_table <- data.frame(
+    Title = character(),
+    Subject = character(),
+    Degree = character(),
+    Institution = character(),
+    ECTS = character(),
+    Program_Link = character(),
+    stringsAsFactors = FALSE
+  )
+  
+  for (row in rows) {
+    title <- row %>% html_node("td:nth-child(2)") |>  html_text(trim = TRUE)
+    subject <- row %>% html_node("td:nth-child(3)") |>  html_text(trim = TRUE)
+    degree <- row %>% html_node("td:nth-child(4)") |>  html_text(trim = TRUE)
+    institution <- row %>% html_node("td:nth-child(5)") |>  html_text(trim = TRUE)
+    ects <- row %>% html_node("td:nth-child(6)") |>  html_text(trim = TRUE)
+    program_link <- row %>% html_node("td:nth-child(2) a") |>  html_attr("href")
+    
+    if (!is.na(title) && title != "") {
+      denmark_table <- rbind(denmark_table, data.frame(
+        Title = title,
+        Subject = subject,
+        Degree = degree,
+        Institution = institution,
+        ECTS = ects,
+        Program_Link = program_link,
+        stringsAsFactors = FALSE
+      ))
+    }
+  }
+}
+  
+  print(denmark_table)
+  
+# write.csv(denmark_table, "programs_denmark.csv", row.names = FALSE)
+
+```
+
+Spain
+```{r}
+
+#Master's page of the SEPIE
+
+url <- "http://sepie.es/aplicaciones-web/i18n/html/tablamasters.html"
+
+webpage <- read_html(url)
+
+rows <- webpage |> 
+  html_nodes("table.table.table-hover.table-bordered.results.flex-container tbody tr")
+
+if (length(rows) > 0) {
+  master_spain_table <- data.frame(
+    University = character(),
+    Master_Degree = character(),
+    Language = character(),
+    Credits_Percent = character(),
+    Area = character(),
+    ECTS_Foreign = character(),
+    Cost_per_ECTS = character(),
+    ECTS = character(),
+    Subjects_Foreign = character(),
+    Full_Itineraries_Foreign = character(),
+    Linguistic_Requirements = character(),
+    Program_Link = character(),
+    stringsAsFactors = FALSE
+  )
+  
+  for (row in rows) {
+    university <- row %>% html_node("td:nth-child(1)") %>% html_text(trim = TRUE)
+    master_degree <- row %>% html_node("td:nth-child(2)") %>% html_text(trim = TRUE)
+    language <- row %>% html_node("td:nth-child(3)") %>% html_text(trim = TRUE)
+    credits_percent <- row %>% html_node("td:nth-child(4)") %>% html_text(trim = TRUE)
+    area <- row %>% html_node("td:nth-child(5)") %>% html_text(trim = TRUE)
+    ects_foreign <- row %>% html_node("td:nth-child(6)") %>% html_text(trim = TRUE)
+    cost_per_ects <- row %>% html_node("td:nth-child(7)") %>% html_text(trim = TRUE)
+    ects <- row %>% html_node("td:nth-child(8)") %>% html_text(trim = TRUE)
+    subjects_foreign <- row %>% html_node("td:nth-child(9)") %>% html_text(trim = TRUE)
+    full_itineraries_foreign <- row %>% html_node("td:nth-child(10)") %>% html_text(trim = TRUE)
+    linguistic_requirements <- row %>% html_node("td:nth-child(11)") %>% html_text(trim = TRUE)
+    
+    program_link <- row %>% html_node("td:nth-child(12) a") %>% html_attr("href")
+    
+    if (!is.na(master_degree) && master_degree != "") {
+      master_spain_table <- rbind(master_spain_table, data.frame(
+        University = university,
+        Master_Degree = master_degree,
+        Language = language,
+        Credits_Percent = credits_percent,
+        Area = area,
+        ECTS_Foreign = ects_foreign,
+        Cost_per_ECTS = cost_per_ects,
+        ECTS = ects,
+        Subjects_Foreign = subjects_foreign,
+        Full_Itineraries_Foreign = full_itineraries_foreign,
+        Linguistic_Requirements = linguistic_requirements,
+        Program_Link = program_link,
+        stringsAsFactors = FALSE
+      ))
+    }
+  }
+}
+  
+  print(master_spain_table)
+  
+
+```
+  
+```{r}
+#Bachelor's page of SEPIE
+  
+  url <- "http://sepie.es/aplicaciones-web/i18n/html/tablagrados.html"
+
+webpage <- read_html(url)
+
+rows <- webpage |> 
+  html_nodes("table.table.table-hover.table-bordered.results tbody tr")
+
+if (length(rows) > 0) {
+  bachelor_spain_table <- data.frame(
+    University = character(),
+    Region = character(),
+    Type = character(),
+    Bachelor_Degree = character(),
+    Language = character(),
+    Total_ECTS = character(),
+    ECTS_Foreign = character(),
+    Credits_Percent = character(),
+    Cost_per_ECTS = character(),
+    Subjects_Foreign = character(),
+    Full_Itineraries_Foreign = character(),
+    Linguistic_Requirements = character(),
+    Program_Link = character(),
+    stringsAsFactors = FALSE
+  )
+  
+  for (row in rows) {
+    university <- row %>% html_node("td:nth-child(1)") %>% html_text(trim = TRUE)
+    region <- row %>% html_node("td:nth-child(2)") %>% html_text(trim = TRUE)
+    type <- row %>% html_node("td:nth-child(3)") %>% html_text(trim = TRUE)
+    bachelor_degree <- row %>% html_node("td:nth-child(4)") %>% html_text(trim = TRUE)
+    language <- row %>% html_node("td:nth-child(5)") %>% html_text(trim = TRUE)
+    total_ects <- row %>% html_node("td:nth-child(6)") %>% html_text(trim = TRUE)
+    ects_foreign <- row %>% html_node("td:nth-child(7)") %>% html_text(trim = TRUE)
+    credits_percent <- row %>% html_node("td:nth-child(8)") %>% html_text(trim = TRUE)
+    cost_per_ects <- row %>% html_node("td:nth-child(9)") %>% html_text(trim = TRUE)
+    subjects_foreign <- row %>% html_node("td:nth-child(10)") %>% html_text(trim = TRUE)
+    full_itineraries_foreign <- row %>% html_node("td:nth-child(11)") %>% html_text(trim = TRUE)
+    linguistic_requirements <- row %>% html_node("td:nth-child(12)") %>% html_text(trim = TRUE)
+    
+    program_link <- row %>% html_node("td:nth-child(13) a") %>% html_attr("href")
+    
+    if (!is.na(bachelor_degree) && bachelor_degree != "") {
+      bachelor_spain_table <- rbind(bachelor_spain_table, data.frame(
+        University = university,
+        Region = region,
+        Type = type,
+        Bachelor_Degree = bachelor_degree,
+        Language = language,
+        Total_ECTS = total_ects,
+        ECTS_Foreign = ects_foreign,
+        Credits_Percent = credits_percent,
+        Cost_per_ECTS = cost_per_ects,
+        Subjects_Foreign = subjects_foreign,
+        Full_Itineraries_Foreign = full_itineraries_foreign,
+        Linguistic_Requirements = linguistic_requirements,
+        Program_Link = program_link,
+        stringsAsFactors = FALSE
+      ))
+    }
+  }
+}
+  
+  print(bachelor_spain_table)
+  
+
+```
+
+```{r}
+if (identical(names(bachelor_spain_table), names(master_spain_table))) {
+  cat("The two tables have the same column names.\n")
+} else {
+  cat("The two tables do not have the same column names.\n")
+  
+  cat("Bachelor Table Columns:\n")
+  print(names(bachelor_spain_table))
+  
+  cat("\nMaster Table Columns:\n")
+  print(names(master_spain_table))
+  
+  diff_bachelor <- setdiff(names(bachelor_spain_table), names(master_spain_table))
+  diff_master <- setdiff(names(master_spain_table), names(bachelor_spain_table))
+  
+  if (length(diff_bachelor) > 0) {
+    cat("\nColumns in Bachelor Table not in Master Table:\n")
+    print(diff_bachelor)
+  }
+  
+  if (length(diff_master) > 0) {
+    cat("\nColumns in Master Table not in Bachelor Table:\n")
+    print(diff_master)
+  }
+}
+```
+
+
+```{r}
+bachelor_clean <- bachelor_spain_table|> 
+  select(-Region, -Type) |> 
+  rename(
+    Degree           = Bachelor_Degree,
+    ECTS             = Total_ECTS
+  ) |> 
+  mutate(
+    Level                   = "Bachelor",
+    Area                    = NA_character_,
+    Linguistic_Requirements = Linguistic_Requirements,  
+    Program_Link            = Program_Link             
+  ) |> 
+  select(
+    University,
+    Degree,
+    Level,
+    Language,
+    Credits_Percent,
+    Area,
+    ECTS_Foreign,
+    Cost_per_ECTS,
+    ECTS,
+    Subjects_Foreign,
+    Linguistic_Requirements,
+    Program_Link
+  )
+
+master_clean <- master_spain_table |> 
+  select(-Full_Itineraries_Foreign) |> 
+  rename(
+    Degree = Master_Degree
+  ) |> 
+  mutate(
+    Level = "Master"
+  ) |> 
+  select(
+    University,
+    Degree,
+    Level,
+    Language,
+    Credits_Percent,
+    Area,
+    ECTS_Foreign,
+    Cost_per_ECTS,
+    ECTS,
+    Subjects_Foreign,
+    Linguistic_Requirements,
+    Program_Link
+  )
+
+
+spain_table <- bind_rows(bachelor_clean, master_clean)
+
+head(spain_table)
+
+# write.csv(spain_table, "programs_spain.csv", row.names = FALSE)
+```
+
+Norway
+```{r}
+base_url <- "https://studyinnorway.no/study-opportunities"
+
+all_pages <- list()
+
+for(page in 0:99) {
+  page_url <- if(page == 0) {
+    base_url
+  } else {
+    paste0(base_url, "?level=&subject=&page=", page)
+  }
+  
+  message("Fetching page ", page, ": ", page_url)
+  doc <- read_html(page_url)
+  
+  items <- doc |>  html_nodes("article.search-item.programme")
+  if (length(items) == 0) {
+    message("No items on page ", page, "; stopping.")
+    break
+  }
+  
+  df <- map_df(items, function(item) {
+    uni_raw <- item |> 
+      html_node(".search-item__type") |> 
+      html_text2() 
+    university <- str_remove(uni_raw, "^Programme\\s*")
+    
+    title_node <- item |> html_node(".search-item__title a")
+    title      <- title_node |> html_text(trim = TRUE)
+    link_raw   <- title_node |> html_attr("href")
+    link       <- if (str_starts(link_raw, "http")) {
+      link_raw
+    } else {
+      url_absolute(link_raw, base_url)
+    }
+    
+    get_field <- function(label) {
+      item |> 
+        html_node(xpath = paste0(
+          ".//div[contains(@class,'search-item__list-item')]",
+          "[.//div[contains(text(),'", label, "')]]",
+          "//div[contains(@class,'search-item__list-value')]"
+        )) |> 
+        html_text(trim = TRUE)
+    }
+    
+    duration <- get_field("Duration")
+    level    <- get_field("Level")
+    
+    tibble(
+      University = university,
+      Title      = title,
+      Duration   = duration,
+      Level      = level,
+      Link       = link
+    )
+  })
+  
+  all_pages[[page + 1]] <- df
+}
+
+norway_table <- bind_rows(all_pages)
+
+norway_table <- norway_table |> 
+  separate(
+    Duration,
+    into = c("Years_text", "ECTS_text"),
+    sep  = "\\|",
+    extra = "merge",
+    fill  = "right"
+  ) |> 
+  mutate(
+    Duration_years = parse_number(Years_text),
+    ECTS           = parse_number(ECTS_text)
+  ) |> 
+  select(-Years_text, -ECTS_text)
+
+head(norway_table)
+
+# write.csv(norway_table, "programs_norway.csv", row.names = FALSE)
+```
+
+Poland
+```{r}
+base_url <- "https://study.gov.pl/studyfinder"
+
+all_pages <- list()
+
+for (pg in 0:99) {
+  # build the page URL
+  page_url <- if (pg == 0) {
+    base_url
+  } else {
+    paste0(base_url, "?page=", pg)
+  }
+  message("Reading ", page_url)
+  
+  doc <- read_html(page_url)
+  
+  rows <- doc |> 
+    html_nodes("table.table-hover tbody tr")
+  if (length(rows) == 0) {
+    message("no rows on page ", pg, " — stopping.")
+    break
+  }
+  
+
+  df <- map_df(rows, function(r) {
+    area    <- r |> html_node("td.views-field-field-area")       |>  html_text(trim=TRUE)
+    prog    <- r |> html_node("td:nth-child(2)")  |>  html_text(trim=TRUE)
+    level   <- r |> html_node("td.views-field-field-level")      |> html_text(trim=TRUE)
+    mode    <- r |> html_node("td.views-field-field-mode-of-studies") |>  html_text(trim=TRUE)
+    uni     <- r |> html_node("td.views-field-field-university a")    |>  html_text(trim=TRUE)
+    uni_url <- r |> html_node("td.views-field-field-university a")    |>  html_attr("href")
+    prog_url <- r |> html_node("td.views-field-view-node a")         |> html_attr("href")
+    contact <- r |> html_node("td.views-field-field-contact a")      |> html_attr("href")
+    
+    uni_url  <- url_absolute(uni_url,  base_url)
+    prog_url <- url_absolute(prog_url, base_url)
+    
+    tibble(
+      Area        = area,
+      Programme   = prog,
+      Level       = level,
+      Mode        = mode,
+      University  = uni,
+      University_URL = uni_url,
+      Programme_URL  = prog_url,
+      Contact     = contact
+    )
+  })
+  
+  all_pages[[pg+1]] <- df
+}
+
+poland_table <- bind_rows(all_pages)
+head(poland_table)
+
+# write.csv(poland_table, "programs_poland.csv", row.names = FALSE)
+```
+
+Slovenia
+```{r}
+url  <- "https://studyinslovenia.si/study/programmes-in-english/"
+page <- read_html(url)
+
+tables <- page |> 
+  html_nodes("div.panel-body .table-responsive table")
+
+parse_table <- function(tbl) {
+  cols <- tbl |>
+    html_node("tbody tr:nth-child(1)") |>
+    html_nodes("strong") |>
+    html_text(trim = TRUE)
+
+  data_rows <- tbl |>
+    html_nodes("tbody tr") |>
+    tail(-1)
+
+  map_df(data_rows, function(r) {
+    vals <- r |> html_nodes("td") |> html_text(trim = TRUE)
+    as_tibble(set_names(as.list(vals), cols))
+  })
+}
+
+df_raw <- map_df(tables, parse_table)
+
+slovenia_table <- df_raw |>
+  rename(
+    RawLevel    = `Academic / professional`,
+    Programme   = `Study programme (English name)`,
+    Institution = `Higher education institution delivering the study programme`
+  ) |>
+  mutate(
+    Type = case_when(
+      str_detect(RawLevel, regex("Undergraduate", ignore_case=TRUE)) ~ "Bachelor",
+      str_detect(RawLevel, regex("Postgraduate",  ignore_case=TRUE)) ~ "Master",
+      str_detect(RawLevel, regex("Doctoral",      ignore_case=TRUE)) ~ "Doctoral",
+      TRUE                                                              ~ RawLevel
+    )
+  ) |>
+  select(Type, Programme, Institution)
+
+head(slovenia_table)
+
+# write.csv(slovenia_table, "programs_slovenia.csv", row.names = FALSE)
+```
+
+Turkey
+```{r}
+base_url <- "https://www.studyinturkiye.gov.tr/StudySearch/List?page="
+
+scrape_one_page <- function(url) {
+  message("Scraping: ", url)
+  
+  doc <- tryCatch(read_html(url), error = function(e) NULL)
+  if (is.null(doc)) {
+    message("Error reading page: ", url)
+    return(NULL)
+  }
+  
+  items <- doc %>% html_nodes("ul#myUL li[data-order]")
+  
+  if (length(items) == 0) {
+    message("No items found on this page.")
+    return(NULL)
+  }
+  
+  map_df(items, function(item) {
+    tibble(
+      University     = item %>% html_node(xpath = ".//a[contains(@class,'arama-liste-ust')]/h4") %>% html_text(trim = TRUE),
+      Programme      = item %>% html_node(xpath = ".//a[contains(@class,'arama-liste-ust')]/span") %>% html_text(trim = TRUE),
+      City           = item %>% html_node(xpath = ".//div[contains(@class,'okul-kisa-detay')]//li[contains(text(),'City:')]/span") %>% html_text(trim = TRUE),
+      Study_Level    = item %>% html_node(xpath = ".//div[contains(@class,'okul-kisa-detay')]//li[contains(text(),'Study Level:')]/span") %>% html_text(trim = TRUE),
+      Study_Type     = item %>% html_node(xpath = ".//div[contains(@class,'okul-kisa-detay')]//li[contains(text(),'Study Type:')]/span") %>% html_text(trim = TRUE),
+      Study_Language = item %>% html_node(xpath = ".//div[contains(@class,'okul-kisa-detay')]//li[contains(text(),'Study Language:')]/span") %>% html_text(trim = TRUE),
+      Price          = item %>% html_node(xpath = ".//div[contains(@class,'okul-kisa-detay')]//li[contains(text(),'Price:')]/span") %>% html_text(trim = TRUE)
+    )
+  })
+}
+
+all_data <- list()
+page_num <- 1
+
+repeat {
+  page_url <- paste0(base_url, page_num, "&EducationLevel=2")
+  message("Scraping page ", page_num)
+  
+  page_data <- scrape_one_page(page_url)
+  
+  if (is.null(page_data) || nrow(page_data) == 0) {
+    message("No more data found. Stopping.")
+    break
+  }
+  
+  all_data[[page_num]] <- page_data
+  page_num <- page_num + 1
+}
+
+turkey_table <- bind_rows(all_data)
+
+head(turkey_table)
+
+# write.csv(turkey_table, "programs_turkey.csv", row.names = FALSE)
+```
+
+
+
+
