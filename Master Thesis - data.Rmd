@@ -5,7 +5,7 @@ date: "2025-05-14"
 output: html_document
 ---
 
-Libraries 
+##Libraries 
 ```{r}
 library(rvest)
 library(dplyr)
@@ -15,9 +15,35 @@ library(tidyr)
 library(readr)
 library(httr)
 library(jsonlite)
+library(RSelenium)
+library(readxl)
+library(ggplot2)
+library(tibble)
+library(stringdist)
+library(fuzzyjoin)
 ```
 
-Denmark
+```{r}
+#library(RSelenium)
+#library(wdman)
+#library(netstat)
+
+#selenium()
+
+#selenium_object <- selenium(retcommand = T, check = F)
+
+#chrome
+#binman::list_versions("chromedriver")
+
+#remote_driver <- rsDriver(browser = "chrome", 
+                          #chromever = "114.0.5735.16",
+                          #verbose = F, 
+                          #port = free_port())
+
+```
+##Scraping the countries en StudyinEurope
+
+###Denmark
 ```{r}
 url <- "https://studyindenmark.dk/portal"
 
@@ -58,16 +84,19 @@ if (length(rows) > 0) {
     }
   }
 }
+
+denmark_table <- denmark_table |> 
+  mutate(Language = "English")
+
+
+print(denmark_table)
   
-  print(denmark_table)
-  
-# write.csv(denmark_table, "programs_denmark.csv", row.names = FALSE)
+#write.csv(denmark_table, "programs_denmark.csv", row.names = FALSE)
 
 ```
 
-Spain
+###Spain
 ```{r}
-
 #Master's page of the SEPIE
 
 url <- "http://sepie.es/aplicaciones-web/i18n/html/tablamasters.html"
@@ -291,7 +320,7 @@ head(spain_table)
 # write.csv(spain_table, "programs_spain.csv", row.names = FALSE)
 ```
 
-Norway
+###Norway
 ```{r}
 base_url <- "https://studyinnorway.no/study-opportunities"
 
@@ -367,14 +396,15 @@ norway_table <- norway_table |>
     Duration_years = parse_number(Years_text),
     ECTS           = parse_number(ECTS_text)
   ) |> 
-  select(-Years_text, -ECTS_text)
+  select(-Years_text, -ECTS_text) |> 
+  mutate(Language = "English")
 
-head(norway_table)
+View(norway_table)
 
-# write.csv(norway_table, "programs_norway.csv", row.names = FALSE)
+#write.csv(norway_table, "programs_norway.csv", row.names = FALSE)
 ```
 
-Poland
+###Poland
 ```{r}
 base_url <- "https://study.gov.pl/studyfinder"
 
@@ -428,59 +458,60 @@ for (pg in 0:99) {
 }
 
 poland_table <- bind_rows(all_pages)
-head(poland_table)
 
-# write.csv(poland_table, "programs_poland.csv", row.names = FALSE)
+poland_table <- poland_table |>
+  mutate(Language = case_when(
+    grepl("german", Programme, ignore.case = TRUE) ~ "German",
+    grepl("russian", Programme, ignore.case = TRUE) ~ "Russian",
+    TRUE ~ "English"
+  ))
+  
+View(poland_table)
+
+#write.csv(poland_table, "programs_poland.csv", row.names = FALSE)
 ```
 
-Slovenia
+###Slovenia
 ```{r}
-url  <- "https://studyinslovenia.si/study/programmes-in-english/"
+url <- "https://studyinslovenia.si/study/programmes-in-english/"
 page <- read_html(url)
 
-tables <- page |> 
-  html_nodes("div.panel-body .table-responsive table")
+tables <- page |> html_nodes("div.panel-body .table-responsive table")
 
 parse_table <- function(tbl) {
-  cols <- tbl |>
-    html_node("tbody tr:nth-child(1)") |>
-    html_nodes("strong") |>
-    html_text(trim = TRUE)
-
-  data_rows <- tbl |>
-    html_nodes("tbody tr") |>
-    tail(-1)
-
+  rows <- tbl %>% html_nodes("tbody tr")
+  
+  header <- rows[1] %>% html_nodes("strong") %>% html_text(trim = TRUE)
+  
+  data_rows <- rows[-1]
+  
   map_df(data_rows, function(r) {
-    vals <- r |> html_nodes("td") |> html_text(trim = TRUE)
-    as_tibble(set_names(as.list(vals), cols))
+    values <- r %>% html_nodes("td") %>% html_text(trim = TRUE)
+    values <- values[seq_along(header)]  
+    as_tibble(set_names(as.list(values), header))
   })
 }
 
 df_raw <- map_df(tables, parse_table)
 
-slovenia_table <- df_raw |>
+slovenia_table <- df_raw |> 
   rename(
-    RawLevel    = `Academic / professional`,
+    Level       = `Level of higher education qualification`,
     Programme   = `Study programme (English name)`,
     Institution = `Higher education institution delivering the study programme`
-  ) |>
+  ) |> 
+  select(Level, Programme, Institution) |> 
   mutate(
-    Type = case_when(
-      str_detect(RawLevel, regex("Undergraduate", ignore_case=TRUE)) ~ "Bachelor",
-      str_detect(RawLevel, regex("Postgraduate",  ignore_case=TRUE)) ~ "Master",
-      str_detect(RawLevel, regex("Doctoral",      ignore_case=TRUE)) ~ "Doctoral",
-      TRUE                                                              ~ RawLevel
-    )
-  ) |>
-  select(Type, Programme, Institution)
+    Language = "English",
+    Level = ifelse(is.na(Level), "Bachelor", Level)
+  )
 
-head(slovenia_table)
+View(slovenia_table)
 
 # write.csv(slovenia_table, "programs_slovenia.csv", row.names = FALSE)
 ```
 
-Turkey
+###Turkey
 ```{r}
 base_url <- "https://www.studyinturkiye.gov.tr/StudySearch/List?page="
 
@@ -538,6 +569,1554 @@ head(turkey_table)
 # write.csv(turkey_table, "programs_turkey.csv", row.names = FALSE)
 ```
 
+###Belgium
+```{r}
+#Flanders's webpages
+
+base_url <- "https://www.studyinflanders.be/programmes/p"
+
+scrape_flanders_page <- function(page_num) {
+  url <- if (page_num == 1) {
+    "https://www.studyinflanders.be/programmes"
+  } else {
+    paste0(base_url, page_num)
+  }
+
+  message("Scraping: ", url)
+
+  page <- tryCatch(read_html(url), error = function(e) return(NULL))
+  if (is.null(page)) return(NULL)
+
+  rows <- page %>% html_elements("tbody tr")
+  if (length(rows) == 0) return(NULL)
+
+  map_dfr(rows, function(row) {
+    cells <- row %>% html_elements("td")
+    if (length(cells) < 5) return(NULL)
+
+    programme_node <- cells[1] |> html_element("a")
+    programme <- programme_node |>  html_text(trim = TRUE)
+    programme_url <- programme_node |>  html_attr("href") %>%
+      { if (!is.na(.)) paste0("https://www.studyinflanders.be", .) else NA }
+
+    tibble(
+      Programme = programme,
+      Programme_URL = programme_url,
+      Type = html_text(cells[2], trim = TRUE),
+      Institution = html_text(cells[3], trim = TRUE),
+      ECTS = html_text(cells[4], trim = TRUE),
+      Language = html_text(cells[5], trim = TRUE)
+    )
+  })
+}
+
+all_data <- list()
+for (i in 1:30) {
+  data <- scrape_flanders_page(i)
+  if (is.null(data)) break
+  all_data[[length(all_data) + 1]] <- data
+  Sys.sleep(1)
+}
+
+flanders_table <- bind_rows(all_data)
+
+flanders_table <- flanders_table |> 
+  mutate(Degree_Level = recode(Type,
+                               "PBA" = "Bachelor",
+                               "ABA" = "Bachelor",
+                               "AdBA" = "Advanced Bachelor", 
+                               "MA" = "Master",
+                               "AdMA" = "Advanced Master", 
+                               "PGR" = "Postgraduate",
+                               "SC" = "Summer Course",
+                               "WS" = "Winter School")) |> 
+  select(-Type)  
+
+View(flanders_table)
+
+```
+
+```{r}
+#Wallonia's webpage 
+
+base_url <- "https://www.studyinbelgium.be/en/our-formations?degree=all&sector=all&language=all&page="
+
+# Function to scrape a single page
+scrape_wallonia_page <- function(page) {
+  url <- paste0(base_url, page)
+  message("Scraping: ", url)
+  
+  page_html <- tryCatch(read_html(url), error = function(e) return(NULL))
+  if (is.null(page_html)) return(NULL)
+
+  cards <- page_html %>% html_elements(".formation")
+  if (length(cards) == 0) return(NULL)
+
+  map_df(cards, function(card) {
+    title_node <- card %>% html_element(".field.title")
+    institution_node <- card %>% html_element(".field.establishment")
+    ects_node <- card %>% html_element(".field.ects")
+    language_node <- card %>% html_element(".field.language")
+
+    programme <- title_node %>% html_element("h3") %>% html_text(trim = TRUE)
+    type <- title_node %>% html_element("p") %>% html_text(trim = TRUE)
+
+    institution <- institution_node %>% html_element("a") %>% html_text(trim = TRUE)
+    url_rel <- institution_node %>% html_element("a") %>% html_attr("href")
+    programme_url <- if (!is.na(url_rel)) paste0("https://www.studyinbelgium.be", url_rel) else NA
+
+    ects <- ects_node %>% html_element("p") %>% html_text(trim = TRUE)
+    language <- language_node %>% html_element("p") %>% html_text(trim = TRUE)
+
+    tibble(
+      Programme = programme,
+      Type = type,
+      Institution = institution,
+      ECTS = ects,
+      Language = language,
+      URL = programme_url
+    )
+  })
+}
+
+all_data <- list()
+for (page in 0:106) {
+  Sys.sleep(1)
+  page_data <- scrape_wallonia_page(page)
+  if (!is.null(page_data)) {
+    all_data[[length(all_data) + 1]] <- page_data
+  }
+}
+
+wallonia_table <- bind_rows(all_data)
+
+wallonia_table <- wallonia_table |> 
+  mutate(Degree_Level = case_when(
+    str_detect(Type, regex("Advanced Bachelor", ignore_case = TRUE)) ~ "Advanced Bachelor",
+    str_detect(Type, regex("Vocational bachelor|Bachelor|Bachelier", ignore_case = TRUE)) ~ "Bachelor",
+    str_detect(Type, regex("Master de spécialisation|Master \\(|Advanced Master", ignore_case = TRUE)) ~ "Advanced Master",
+    str_detect(Type, regex("Master", ignore_case = TRUE)) ~ "Master",
+    str_detect(Type, regex("Doctorate|Doctor|Formation doctorale", ignore_case = TRUE)) ~ "PhD",
+    str_detect(Type, regex("Agrégation", ignore_case = TRUE)) ~ "Postgraduate",
+    TRUE ~ NA_character_
+  )) |> 
+  select(-Type) 
+
+wallonia_table <- wallonia_table |> 
+  rename(Programme_URL = URL)
+
+View(wallonia_table)
+# write.csv(wallonia_table, "wallonia_table.csv", row.names = FALSE)
+```
+
+```{r}
+#Belgium data combined
+
+belgium_table <- bind_rows(flanders_table, wallonia_table)
+
+View(belgium_table)
+#write.csv(belgium_table, "programs_belgium.csv", row.names = FALSE)
+```
+
+###Estonia
+```{r}
+#Estonia's Bachelors
+
+library(rvest)
+library(dplyr)
+
+# URL della pagina
+url <- "https://www.studyinestonia.ee/study/programmes/bachelors-programmes"
+
+page <- read_html(url)
+
+rows <- page |> html_elements("table tbody tr")
+
+data <- list()
+
+for (row in rows) {
+  tds <- row |>  html_elements("td")
+  if (length(tds) < 5) next  
+  
+  link <- tryCatch({
+    tds[1] |>  html_element("a") %>% html_attr("href")
+  }, error = function(e) NA)
+
+  programme <- tryCatch({
+    tds[1] |>  html_element("strong") %>% html_text(trim = TRUE)
+  }, error = function(e) NA)
+
+  degree_type <- tryCatch({
+    tds[1] |>  html_element("em") %>% html_text(trim = TRUE)
+  }, error = function(e) NA)
+
+  university <- tryCatch({
+    tds[2] |>  html_text(trim = TRUE)
+  }, error = function(e) NA)
+
+  cost <- tryCatch({
+    tds[3] |>  html_text(trim = TRUE)
+  }, error = function(e) NA)
+
+  email <- tryCatch({
+    tds[4] |>  html_element("a") |>  html_text(trim = TRUE)
+  }, error = function(e) NA)
+
+  data[[length(data) + 1]] <- list(
+    Programme_Name = programme,
+    Programme_Link = link,
+    Degree_Type = degree_type,
+    University = university,
+    Tuition_Fee = cost,
+    Contact_Email = email
+  )
+}
+
+estonia_bachelors <- bind_rows(data)
+
+estonia_bachelors <- estonia_bachelors |> 
+  mutate(Degree_Type = ifelse(is.na(Degree_Type), "Bachelor", Degree_Type)) 
+
+View(estonia_bachelors)
+
+```
+
+```{r}
+#Estonia's Masters 
+
+url <- "https://www.studyinestonia.ee/study/programmes/masters-programmes"
+
+page <- read_html(url)
+
+rows <- page |>  html_elements("table tbody tr")
+
+data <- list()
+
+for (row in rows) {
+  tds <- row |>  html_elements("td")
+  
+  if (length(tds) >= 5) {
+    link <- tds[1] |>  html_element("a") |>  html_attr("href")
+    
+    programme <- tds[1] |> html_element("strong") |> html_text(trim = TRUE)
+    
+    degree_type <- tds[1] |>  html_element("em") |>  html_text(trim = TRUE)
+    if (is.na(degree_type) || degree_type == "") {
+      degree_type <- "master"
+    }
+    
+    university <- tds[2] |>  html_text(trim = TRUE)
+    
+    cost <- tds[3] |>  html_text(trim = TRUE) |>  str_squish()
+    
+    email <- tds[4] |>  html_element("a") |>  html_text(trim = TRUE)
+
+    data[[length(data) + 1]] <- list(
+      Programme_Name = programme,
+      Programme_Link = link,
+      Degree_Type = degree_type,
+      University = university,
+      Tuition_Fee = cost,
+      Contact_Email = email
+    )
+  }
+}
+
+estonia_master <- bind_rows(data)
+
+View(estonia_master)
+```
+
+```{r}
+#Estonia programmes combined 
+
+estonia_table <- bind_rows(estonia_bachelors, estonia_master)
+
+estonia_table <- estonia_table |> 
+  mutate(Language = "English")
+
+View(estonia_table)
+#write.csv(estonia_table, "programs_estonia.csv", row.names = FALSE)
+
+```
+
+###Lithuania
+```{r}
+urls <- c("https://studyin.lt/study-programmes/", 
+          paste0("https://studyin.lt/study-programmes/page/", 2:44, "/"))
+
+lithuania_table <- data.frame()
+
+for (url in urls) {
+  cat("Scraping:", url, "\n")
+  
+  page <- read_html(url)
+  
+  programs <- page |>  html_nodes("div.program.type-program")
+  
+  for (p in programs) {
+    title <- p |>  html_node(".program-name.program-block") |>  html_text(trim = TRUE)
+    university <- p |>  html_node(".program-university.program-block") |>  html_text(trim = TRUE)
+    degree <- p |>  html_node(".program-degree.program-block") |>  html_text(trim = TRUE)
+    duration <- p |>  html_node(".program-duration.program-block .duration-link") |>  html_text(trim = TRUE)
+    tuition <- p |>  html_node(".program-price.program-block .duration-link") |>  html_text(trim = TRUE)
+    link <- p |>  html_node(".program-name.program-block") |>  html_attr("href")
+    
+    lithuania_table <- rbind(lithuania_table, data.frame(
+      Title = title,
+      University = university,
+      Degree = degree,
+      Duration = duration,
+      Tuition = tuition,
+      Link = link,
+      stringsAsFactors = FALSE
+    ))
+  }
+  
+  Sys.sleep(1)
+}
+
+lithuania_table <- lithuania_table |> 
+  mutate(
+    Title = str_remove(Title, "^Program:\\s*"),
+    University = str_remove(University, "^University:\\s*"),
+    Degree = str_remove(Degree, "^Level:\\s*")
+  )
+
+contains_cyrillic <- function(text) {
+  grepl("[\u0400-\u04FF]", text)
+}
+
+lithuania_table <- lithuania_table |>
+  mutate(Language = case_when(
+    grepl("german", Title, ignore.case = TRUE) ~ "German",
+    grepl("russian", Title, ignore.case = TRUE) ~ "Russian",
+    contains_cyrillic(Title) ~ "Russian",
+    TRUE ~ "English"
+  ))
+  
+
+View(lithuania_table)
+#write.csv(lithuania_table, "programs_lithuania.csv", row.names = FALSE)
+
+```
+
+###Austria
+```{r}
+# Art studies
+base_url <- "https://www.studienwahl.at/studies/art-studies"
+area <- "Art Studies"
+pages <- 1:5
+
+art_studies_austria <- data.frame()
+
+for (p in pages) {
+  cat("Scraping page:", p, "\n")
+  
+  url <- paste0(base_url, "?page=", p, "&per-page=10")
+  
+  try({
+    page <- read_html(url)
+    courses <- page %>% html_nodes("div.course")
+    
+    for (c in courses) {
+      title <- c %>% html_node("h2") %>% html_text(trim = TRUE)
+      
+      # Estrai l'intero paragrafo per nome università
+      university_name <- c %>% html_node("p") %>% html_text(trim = TRUE)
+      
+      # Estrai info tipo programma + città
+      program_city <- c %>%
+        html_nodes("b") %>%
+        .[1] %>%
+        html_text(trim = TRUE)
+      
+      # Separa tipo programma e città
+      program_type <- str_trim(str_split_fixed(program_city, "»", 2)[, 1])
+      location <- str_trim(str_split_fixed(program_city, "»", 2)[, 2])
+      
+      # Link dettagli (description)
+      link <- c %>% html_node("p.kurzinfo a") %>% html_attr("href")
+      full_link <- if (!is.na(link)) paste0("https://www.studienwahl.at", link) else NA
+      
+      art_studies_austria <- rbind(art_studies_austria, data.frame(
+        Title = title,
+        University_Name = university_name,
+        Program_Type = program_type,
+        Location = location,
+        Detail_Link = full_link,
+        Area = area,
+        stringsAsFactors = FALSE
+      ))
+    }
+  }, silent = TRUE)
+  
+  Sys.sleep(1)
+}
+
+View(art_studies_austria)
+```
+
+```{r}
+#Engineering Sciences
+base_url <- "https://www.studienwahl.at/studies/engineering-sciences"
+area <- "Engineering Sciences"
+
+engineering_studies_austria <- data.frame()
+
+for (page_num in 1:24) {
+  cat("Scraping page:", page_num, "\n")
+  
+  url <- paste0(base_url, "?page=", page_num, "&per-page=10")
+  
+  tryCatch({
+    page <- read_html(url)
+    courses <- page %>% html_nodes("div.course")
+    
+    for (c in courses) {
+      title <- c %>% html_node("h2") %>% html_text(trim = TRUE)
+      
+      university_name <- c %>% html_node("p") %>% html_text(trim = TRUE)
+      
+      program_city <- c %>% html_nodes("b") %>% .[1] %>% html_text(trim = TRUE)
+      program_type <- str_trim(str_split_fixed(program_city, "»", 2)[, 1])
+      location <- str_trim(str_split_fixed(program_city, "»", 2)[, 2])
+      
+      link <- c %>% html_node("p.kurzinfo a") %>% html_attr("href")
+      full_link <- if (!is.na(link)) paste0("https://www.studienwahl.at", link) else NA
+      
+      engineering_studies_austria <- rbind(engineering_studies_austria, data.frame(
+        Title = title,
+        University_Name = university_name,
+        Program_Type = program_type,
+        Location = location,
+        Detail_Link = full_link,
+        Area = area,
+        stringsAsFactors = FALSE
+      ))
+    }
+  }, error = function(e) {
+    message("Errore a pagina ", page_num, ": ", e$message)
+  })
+  
+  Sys.sleep(1)
+}
+
+View(engineering_studies_austria)
+
+```
+
+```{r}
+#Humanities
+base_url <- "https://www.studienwahl.at/studies/humanities"
+area <- "Humanities"
+
+humanities_studies_austria <- data.frame()
+
+for (page_num in 1:21) {
+  cat("Scraping page:", page_num, "\n")
+  
+  url <- paste0(base_url, "?page=", page_num, "&per-page=10")
+  
+  tryCatch({
+    page <- read_html(url)
+    courses <- page %>% html_nodes("div.course")
+    
+    for (c in courses) {
+      title <- c %>% html_node("h2") %>% html_text(trim = TRUE)
+      
+      university_name <- c %>% html_node("p") %>% html_text(trim = TRUE)
+      
+      program_city <- c %>% html_nodes("b") %>% .[1] %>% html_text(trim = TRUE)
+      program_type <- str_trim(str_split_fixed(program_city, "»", 2)[, 1])
+      location <- str_trim(str_split_fixed(program_city, "»", 2)[, 2])
+      
+      link <- c %>% html_node("p.kurzinfo a") %>% html_attr("href")
+      full_link <- if (!is.na(link)) paste0("https://www.studienwahl.at", link) else NA
+      
+      humanities_studies_austria <- rbind(humanities_studies_austria, data.frame(
+        Title = title,
+        University_Name = university_name,
+        Program_Type = program_type,
+        Location = location,
+        Detail_Link = full_link,
+        Area = area,
+        stringsAsFactors = FALSE
+      ))
+    }
+  }, error = function(e) {
+    message("Errore a pagina ", page_num, ": ", e$message)
+  })
+  
+  Sys.sleep(1)
+}
+
+View(humanities_studies_austria)
+```
+
+```{r}
+#Law
+base_url <- "https://www.studienwahl.at/studies/law"
+area <- "Law"
+
+law_studies_austria <- data.frame()
+
+cat("Scraping Law page\n")
+
+tryCatch({
+  page <- read_html(base_url)
+  courses <- page %>% html_nodes("div.course")
+  
+  for (c in courses) {
+    title <- c %>% html_node("h2") %>% html_text(trim = TRUE)
+    
+    university_name <- c %>% html_node("p") %>% html_text(trim = TRUE)
+    
+    program_city <- c %>% html_nodes("b") %>% .[1] %>% html_text(trim = TRUE)
+    program_type <- str_trim(str_split_fixed(program_city, "»", 2)[, 1])
+    location <- str_trim(str_split_fixed(program_city, "»", 2)[, 2])
+    
+    link <- c %>% html_node("p.kurzinfo a") %>% html_attr("href")
+    full_link <- if (!is.na(link)) paste0("https://www.studienwahl.at", link) else NA
+    
+    law_studies_austria <- rbind(law_studies_austria, data.frame(
+      Title = title,
+      University_Name = university_name,
+      Program_Type = program_type,
+      Location = location,
+      Detail_Link = full_link,
+      Area = area,
+      stringsAsFactors = FALSE
+    ))
+  }
+}, error = function(e) {
+  message("Errore durante lo scraping: ", e$message)
+})
+
+View(law_studies_austria)
+```
+
+```{r}
+#Medicine & Health
+base_url <- "https://www.studienwahl.at/studies/medicinehealth"
+area <- "Medicine & Health"
+
+medicinehealth_studies_austria <- data.frame()
+
+for (page_num in 1:4) {
+  cat("Scraping page:", page_num, "\n")
+  
+  url <- paste0(base_url, "?page=", page_num, "&per-page=10")
+  
+  tryCatch({
+    page <- read_html(url)
+    courses <- page %>% html_nodes("div.course")
+    
+    for (c in courses) {
+      title <- c %>% html_node("h2") %>% html_text(trim = TRUE)
+      
+      university_name <- c %>% html_node("p") %>% html_text(trim = TRUE)
+      
+      program_city <- c %>% html_nodes("b") %>% .[1] %>% html_text(trim = TRUE)
+      program_type <- str_trim(str_split_fixed(program_city, "»", 2)[, 1])
+      location <- str_trim(str_split_fixed(program_city, "»", 2)[, 2])
+      
+      link <- c %>% html_node("p.kurzinfo a") %>% html_attr("href")
+      full_link <- if (!is.na(link)) paste0("https://www.studienwahl.at", link) else NA
+      
+      medicinehealth_studies_austria <- rbind(medicinehealth_studies_austria, data.frame(
+        Title = title,
+        University_Name = university_name,
+        Program_Type = program_type,
+        Location = location,
+        Detail_Link = full_link,
+        Area = area,
+        stringsAsFactors = FALSE
+      ))
+    }
+  }, error = function(e) {
+    message("Errore a pagina ", page_num, ": ", e$message)
+  })
+  
+  Sys.sleep(1)
+}
+
+View(medicinehealth_studies_austria)
+```
+
+```{r}
+#Social and Economic Sciences
+base_url <- "https://www.studienwahl.at/studies/social-and-economic-sciences"
+area <- "Social and Economic Sciences"
+
+social_economic_studies_austria <- data.frame()
+
+for (page_num in 1:15) {
+  cat("Scraping page:", page_num, "\n")
+  
+  url <- paste0(base_url, "?page=", page_num, "&per-page=10")
+  
+  tryCatch({
+    page <- read_html(url)
+    courses <- page %>% html_nodes("div.course")
+    
+    for (c in courses) {
+      title <- c %>% html_node("h2") %>% html_text(trim = TRUE)
+      
+      university_name <- c %>% html_node("p") %>% html_text(trim = TRUE)
+      
+      program_city <- c %>% html_nodes("b") %>% .[1] %>% html_text(trim = TRUE)
+      program_type <- str_trim(str_split_fixed(program_city, "»", 2)[, 1])
+      location <- str_trim(str_split_fixed(program_city, "»", 2)[, 2])
+      
+      link <- c %>% html_node("p.kurzinfo a") %>% html_attr("href")
+      full_link <- if (!is.na(link)) paste0("https://www.studienwahl.at", link) else NA
+      
+      social_economic_studies_austria <- rbind(social_economic_studies_austria, data.frame(
+        Title = title,
+        University_Name = university_name,
+        Program_Type = program_type,
+        Location = location,
+        Detail_Link = full_link,
+        Area = area,
+        stringsAsFactors = FALSE
+      ))
+    }
+  }, error = function(e) {
+    message("Errore a pagina ", page_num, ": ", e$message)
+  })
+  
+  Sys.sleep(1)
+}
+
+View(social_economic_studies_austria)
+
+```
+
+```{r}
+#Teacher Training Programmes
+base_url <- "https://www.studienwahl.at/studies/teacher-training-programmes"
+area <- "Teacher Training Programmes"
+
+teacher_training_studies_austria <- data.frame()
+
+cat("Scraping Teacher Training Programmes...\n")
+
+tryCatch({
+  page <- read_html(base_url)
+  courses <- page %>% html_nodes("div.course")
+  
+  for (c in courses) {
+    title <- c %>% html_node("h2") %>% html_text(trim = TRUE)
+    
+    university_name <- c %>% html_node("p") %>% html_text(trim = TRUE)
+    
+    program_city <- c %>% html_nodes("b") %>% .[1] %>% html_text(trim = TRUE)
+    program_type <- str_trim(str_split_fixed(program_city, "»", 2)[, 1])
+    location <- str_trim(str_split_fixed(program_city, "»", 2)[, 2])
+    
+    link <- c %>% html_node("p.kurzinfo a") %>% html_attr("href")
+    full_link <- if (!is.na(link)) paste0("https://www.studienwahl.at", link) else NA
+    
+    teacher_training_studies_austria <- rbind(teacher_training_studies_austria, data.frame(
+      Title = title,
+      University_Name = university_name,
+      Program_Type = program_type,
+      Location = location,
+      Detail_Link = full_link,
+      Area = area,
+      stringsAsFactors = FALSE
+    ))
+  }
+}, error = function(e) {
+  message("Errore durante lo scraping: ", e$message)
+})
+
+View(teacher_training_studies_austria)
+
+```
+
+```{r}
+#Combining all the programmes together 
+
+austria_table <- bind_rows(
+  art_studies_austria,
+  engineering_studies_austria,
+  humanities_studies_austria,
+  law_studies_austria,
+  medicinehealth_studies_austria,
+  social_economic_studies_austria,
+  teacher_training_studies_austria
+) |> 
+  mutate(
+    Language = if_else(str_detect(Title, "\\(E\\)"), "English", "German"),
+    
+    Title = str_replace(Title, "\\s*\\(E\\)", ""),
+    
+    Program_Type = case_when(
+      str_detect(Program_Type, regex("bachelor", ignore_case = TRUE)) ~ "Bachelor",
+      str_detect(Program_Type, regex("master", ignore_case = TRUE)) ~ "Master",
+      str_detect(Program_Type, regex("phd|doctor", ignore_case = TRUE)) ~ "PhD",
+      str_detect(Program_Type, regex("diploma", ignore_case = TRUE)) ~ "Diploma",
+      str_detect(Program_Type, regex("teacher", ignore_case = TRUE)) ~ "Teacher Training",
+      TRUE ~ str_trim(Program_Type)  
+    )
+  )
+
+  
+View(austria_table)
+
+#write.csv(austria_table, "programs_austria.csv", row.names = FALSE)
+
+```
+
+###Croatia
+```{r}
+url <- "https://www.studyincroatia.hr/study-in-croatia/study-programmes-in-english/"
+page <- read_html(url)
+
+nodes <- page %>% html_nodes("article#main p, article#main strong")
+
+croatia_table <- data.frame()
+current_level <- NA
+current_field <- NA
+
+for (i in seq_along(nodes)) {
+  node <- nodes[[i]]
+  tag_name <- html_name(node)
+  text <- html_text(node, trim = TRUE)
+
+  if (str_detect(text, regex("bachelor.*programmes", ignore_case = TRUE)) &&
+      !str_detect(text, regex("integrated", ignore_case = TRUE))) {
+    current_level <- "Bachelor"
+    next
+  } else if (str_detect(text, regex("master.*programmes", ignore_case = TRUE)) &&
+             !str_detect(text, regex("integrated", ignore_case = TRUE))) {
+    current_level <- "Master"
+    next
+  } else if (str_detect(text, regex("integrated.*bachelor.*master", ignore_case = TRUE))) {
+    current_level <- "Integrated Bachelor + Master"
+    next
+  } else if (str_detect(text, regex("doctoral.*programmes", ignore_case = TRUE))) {
+    current_level <- "Doctoral"
+    next
+  }
+
+  if (tag_name == "strong" && !str_detect(text, regex("programmes", ignore_case = TRUE))) {
+    current_field <- str_to_title(text)
+    next
+  }
+
+  if (tag_name == "p" && length(html_nodes(node, "a")) > 0) {
+    link_node <- html_node(node, "a")
+    full_text <- html_text(node, trim = TRUE)
+    link <- html_attr(link_node, "href")
+
+    if (str_detect(full_text, ":")) {
+      parts <- str_split_fixed(full_text, ":", 2)
+      program_name <- str_trim(parts[1])
+      university <- str_trim(parts[2])
+    } else {
+      program_name <- html_text(link_node, trim = TRUE)
+      next_node <- if (i + 1 <= length(nodes)) nodes[[i + 1]] else NULL
+      university <- if (!is.null(next_node) && html_name(next_node) == "p") {
+        uni_text <- html_text(next_node, trim = TRUE)
+        if (str_detect(uni_text, regex("university", ignore_case = TRUE))) {
+          str_trim(uni_text)
+        } else {
+          NA_character_
+        }
+      } else {
+        NA_character_
+      }
+    }
+
+    croatia_table <- bind_rows(croatia_table, data.frame(
+      Title = program_name,
+      Study_Level = current_level,
+      Field = current_field,
+      University = university,
+      Language = "English",
+      Link = link,
+      stringsAsFactors = FALSE
+    ))
+  }
+}
+
+croatia_table <- croatia_table %>%
+  mutate(
+    Title = case_when(
+      str_detect(Title, "^Applied Computer Engineering \\(sub-specialization in") ~
+        "Applied Computer Engineering (sub-specialization in a) Software Engineering; b) System Engineering)",
+      str_detect(Title, "^Market Communication Design \\(sub-specialization in") ~
+        "Market Communication Design (sub-specialization in a) Design, b) 3D Design)",
+      TRUE ~ Title
+    ),
+    University = case_when(
+      Title == "International Joint Cross-Border PhD Programme in International Economic Relations and Management" ~
+        "Juraj Dobrila University of Pula",
+      Title == "Forensic Sciences" ~
+        "University of Split",
+      str_detect(Title, "^Applied Computer Engineering") &
+        str_detect(University, "System Engineering") ~
+        "Algebra Bernays University",
+      str_detect(Title, "^Market Communication Design") &
+        str_detect(University, "3D Design") ~
+        "Algebra Bernays University",
+      TRUE ~ University
+    )
+  ) %>%
+  mutate(
+    University = University %>%
+      str_replace(".*\\):\\s*", "") %>%  
+      str_replace("^.*?:\\s*(University.*)", "\\1") %>%  
+      str_replace("^.*?,\\s*(University.*)", "\\1") %>%  
+
+      str_replace(",\\s*Faculty.*", "") %>%  
+      str_replace(",\\s*Department.*", "") %>%  
+      str_replace(",\\s*School.*", "") %>%  
+
+      str_replace_all(",\\s*(?i)zagreb", "") %>%
+      str_replace_all(",\\s*(?i)rijeka", "") %>%
+      str_replace_all(",\\s*(?i)split", "") %>%
+      str_replace_all(",\\s*(?i)zadar", "") %>%
+      str_replace_all(",\\s*(?i)osijek", "") %>%
+      str_replace_all(",\\s*(?i)pula", "") %>%
+      str_replace_all(",\\s*(?i)dubrovnik", "") %>%
+      str_replace_all(",\\s*(?i)varazdin", "") %>%
+      str_replace_all(",\\s*(?i)čakovec", "") %>%
+
+      str_squish() %>%
+      str_to_lower()
+  ) 
+
+View(croatia_table)
+
+#write.csv(croatia_table, "programs_croatia.csv", row.names = FALSE)
+
+```
+
+###Sweden
+```{r}
+scrape_sweden_programs <- function(url, field) {
+  page <- read_html(url)
+  cards <- page %>% html_nodes(".searchresultcard")
+  
+  programs <- lapply(cards, function(card) {
+    title <- card %>% html_node(".headline4") %>% html_text(trim = TRUE)
+    info <- card %>% html_node(".universal_medium") %>% html_text(trim = TRUE)
+    info <- str_squish(info)
+    
+    credits <- str_extract(info, "^\\d+\\s*Credits")
+    credits_num <- as.numeric(str_extract(credits, "\\d+"))
+    
+    university <- str_extract(info, "(?<=Credits, ).*?(?=, Location:)")
+    city <- str_extract(info, "Location:.*") %>%
+      str_remove("Location:") %>%
+      str_squish()
+    
+    # Primo tentativo basato sul titolo
+    study_level <- case_when(
+      str_detect(title, regex("Master|MSc", ignore_case = TRUE)) ~ "Master",
+      str_detect(title, regex("Bachelor|BSc|BFA", ignore_case = TRUE)) ~ "Bachelor",
+      TRUE ~ NA_character_
+    )
+    
+    # Secondo tentativo: fallback con i crediti
+    if (is.na(study_level)) {
+      if (!is.na(credits_num)) {
+        if (credits_num == 180) study_level <- "Bachelor"
+        else if (credits_num %in% c(60, 120)) study_level <- "Master"
+        else if (credits_num == 300) study_level <- "Integrated Bachelor + Master"
+      }
+    }
+
+    data.frame(
+      Title = title,
+      Study_Level = study_level,
+      University = university,
+      City = city,
+      Credits = credits,
+      Field = field,
+      Language = "English",
+      stringsAsFactors = FALSE
+    )
+  })
+  
+  bind_rows(programs)
+}
+
+category_urls <- list(
+  "Agriculture, Horticulture, Forestry and Fishery" = "https://www.universityadmissions.se/intl/search?period=24&type=programs&subjects=150-&sortBy=nameAsc",
+  "Art, Design and Media" = "https://www.universityadmissions.se/intl/search?period=24&type=programs&subjects=20-&sortBy=nameAsc",
+  "Business, Administration and Economics" = "https://www.universityadmissions.se/intl/search?period=24&type=programs&subjects=80-&sortBy=nameAsc",
+  "Computer, Science and Engineering" = "https://www.universityadmissions.se/intl/search?period=24&type=programs&subjects=120-&sortBy=nameAsc",
+  "Educational, Educational Science and Didactics" = "https://www.universityadmissions.se/intl/search?period=24&type=programs&subjects=10-&sortBy=nameAsc",
+  "Journalism, Communication and Information" = "https://www.universityadmissions.se/intl/search?period=24&type=programs&subjects=70-&sortBy=nameAsc",
+  "Health and Medical Care" = "https://www.universityadmissions.se/intl/search?period=24&type=programs&subjects=170-&sortBy=nameAsc",
+  "Humanities" = "https://www.universityadmissions.se/intl/search?period=24&type=programs&subjects=40-&sortBy=nameAsc",
+  "Languages" = "https://www.universityadmissions.se/intl/search?period=24&type=programs&subjects=50-&sortBy=nameAsc",
+  "Mathematics" = "https://www.universityadmissions.se/intl/search?period=24&type=programs&subjects=110-&sortBy=nameAsc",
+  "Materials, Construction and Manufacturing" = "https://www.universityadmissions.se/intl/search?period=24&type=programs&subjects=140-&sortBy=nameAsc",
+  "Religious Studies" = "https://www.universityadmissions.se/intl/search?period=24&type=programs&subjects=30-&sortBy=nameAsc",
+  "Natural Science" = "https://www.universityadmissions.se/intl/search?period=24&type=programs&subjects=100-&sortBy=nameAsc",
+  "Technology" = "https://www.universityadmissions.se/intl/search?period=24&type=programs&subjects=130-&sortBy=nameAsc",
+  "Law and Legal Studies" = "https://www.universityadmissions.se/intl/search?period=24&type=programs&subjects=90-&sortBy=nameAsc",
+  "Social Science" = "https://www.universityadmissions.se/intl/search?period=24&type=programs&subjects=60-&sortBy=nameAsc",
+  "Social Work and Welfare" = "https://www.universityadmissions.se/intl/search?period=24&type=programs&subjects=180-&sortBy=nameAsc"
+)
+
+sweden_table <- bind_rows(lapply(names(category_urls), function(field) {
+  message("Scraping: ", field)
+  scrape_sweden_programs(category_urls[[field]], field)
+}))
+
+View(sweden_table)
+
+#write.csv(sweden_table, "programs_sweden.csv", row.names = FALSE)
+```
+
+###Cyprus
+```{r}
+extract_programs_cyprus <- function(url, field) {
+  page <- read_html(url)
+
+  cards <- html_nodes(page, ".search-results-degree")
+
+  programs <- lapply(cards, function(card) {
+    title_node <- card %>% html_node("#MainContent_DegreeName")
+
+    title <- title_node %>% html_text(trim = TRUE)
+    link <- title_node %>% html_attr("href")
+
+    university <- card %>%
+      html_node(xpath = ".//following-sibling::div[@class='search-results-institution']//a") %>%
+      html_text(trim = TRUE)
+
+    department <- card %>%
+      html_node(xpath = ".//following-sibling::div[@class='search-results-school']//a") %>%
+      html_text(trim = TRUE)
+
+    study_level <- card %>%
+      html_node(xpath = ".//following-sibling::div[@class='search-results-details']//span[@id='MainContent_Lvl']") %>%
+      html_text(trim = TRUE)
+
+    ects <- card %>%
+      html_node(xpath = ".//following-sibling::div[@class='search-results-details']//span[@id='MainContent_ECTS']") %>%
+      html_text(trim = TRUE)
+
+    duration <- card %>%
+      html_node(xpath = ".//following-sibling::div[@class='search-results-details']//span[@id='MainContent_Duration']") %>%
+      html_text(trim = TRUE)
+
+    fees <- card %>%
+      html_node(xpath = ".//following-sibling::div[@class='search-results-details']//span[@id='MainContent_Fees']") %>%
+      html_text(trim = TRUE)
+
+    data.frame(
+      Title = title,
+      Link = link,
+      University = university,
+      Department = department,
+      Study_Level = str_to_title(study_level),
+      Duration = duration,
+      ECTS = ects,
+      Tuition = fees,
+      Language = "English",
+      Field = field,
+      stringsAsFactors = FALSE
+    )
+  })
+
+  bind_rows(programs)
+}
+
+cyprus_urls <- list(
+  "Architecture and Construction" = "https://studyfinder.studycyprus.eu/CheckboxFind?sa_ID=2&lang=UK",
+  "Arts" = "https://studyfinder.studycyprus.eu/CheckboxFind?sa_ID=15&lang=UK",
+  "Computer Science" = "https://studyfinder.studycyprus.eu/CheckboxFind?sa_ID=9&lang=UK",
+  "Earth and Environmental Science" = "https://studyfinder.studycyprus.eu/CheckboxFind?sa_ID=5&lang=UK",
+  "Economics and Business Administration" = "https://studyfinder.studycyprus.eu/CheckboxFind?sa_ID=8&lang=UK",
+  "Education Science" = "https://studyfinder.studycyprus.eu/CheckboxFind?sa_ID=4&lang=UK",
+  "Exact Science" = "https://studyfinder.studycyprus.eu/CheckboxFind?sa_ID=11&lang=UK",
+  "Health Science" = "https://studyfinder.studycyprus.eu/CheckboxFind?sa_ID=7&lang=UK",
+  "Humanities Science" = "https://studyfinder.studycyprus.eu/CheckboxFind?sa_ID=1&lang=UK",
+  "Law Science" = "https://studyfinder.studycyprus.eu/CheckboxFind?sa_ID=13&lang=UK",
+  "Life and Biological Science" = "https://studyfinder.studycyprus.eu/CheckboxFind?sa_ID=6&lang=UK",
+  "Mathematics" = "https://studyfinder.studycyprus.eu/CheckboxFind?sa_ID=12&lang=UK",
+  "Order and Safety Science" = "https://studyfinder.studycyprus.eu/CheckboxFind?sa_ID=17&lang=UK",
+  "Social Science" = "https://studyfinder.studycyprus.eu/CheckboxFind?sa_ID=16&lang=UK",
+  "Sport Science" = "https://studyfinder.studycyprus.eu/CheckboxFind?sa_ID=3&lang=UK",
+  "Technology and Engineering Science" = "https://studyfinder.studycyprus.eu/CheckboxFind?sa_ID=14&lang=UK",
+  "Tourism and Entertainment Services" = "https://studyfinder.studycyprus.eu/CheckboxFind?sa_ID=18&lang=UK"
+)
+
+cyprus_table <- lapply(names(cyprus_urls), function(field) {
+  message("Extracting: ", field)
+  tryCatch({
+    extract_programs_cyprus(cyprus_urls[[field]], field)
+  }, error = function(e) {
+    message("Error on: ", field)
+    return(NULL)
+  })
+}) |> bind_rows()
+
+cyprus_table <- cyprus_table %>%
+  filter(!is.na(Title) & Title != "")
+
+View(cyprus_table)
+
+#write.csv(cyprus_table, "programs_cyprus.csv", row.names = FALSE)
+
+```
+
+##Creating the dataset programs_EU
+
+###Normalize the names of the variables per single datasets
+```{r}
+austria_table <- austria_table |>
+  rename(
+    Program_Title = Title,
+    Institution = University_Name,
+    Level = Program_Type,
+    City = Location,
+    Link = Detail_Link,
+    Field = Area,
+    Language = Language 
+  ) |>
+  mutate(Country = "Austria")
+
+belgium_table <- belgium_table |>
+  rename(
+    Program_Title = Programme,
+    Link = Programme_URL,
+    Level = Degree_Level,
+    Institution = Institution,  
+    ECTS = ECTS,
+    Language = Language
+  ) |>
+  mutate(Country = "Belgium")
+
+croatia_table <- croatia_table |>
+  rename(
+    Program_Title = Title,
+    Level = Study_Level,
+    Field = Field,
+    Institution = University,
+    Language = Language,
+    Link = Link
+  ) |>
+  mutate(Country = "Croatia")
+
+cyprus_table <- cyprus_table |>
+  rename(
+    Program_Title = Title,
+    Institution = University,
+    Level = Study_Level,
+    Link = Link,
+    Department = Department,
+    Duration = Duration,
+    ECTS = ECTS,
+    Tuition = Tuition,
+    Language = Language,
+    Field = Field
+  ) |>
+  mutate(Country = "Cyprus")
+
+denmark_table <- denmark_table |>
+  rename(
+    Program_Title = Title,
+    Field = Subject,
+    Level = Degree,
+    Institution = Institution,
+    ECTS = ECTS,
+    Link = Program_Link,
+    Language = Language
+  ) |>
+   mutate(
+    ECTS = as.numeric(ECTS),
+    Country = "Denmark"
+  )
+
+estonia_table <- estonia_table |>
+  rename(
+    Program_Title = Programme_Name,
+    Link = Programme_Link,
+    Level = Degree_Type,
+    Institution = University,
+    Tuition = Tuition_Fee,
+    Contact_Email = Contact_Email,
+    Language = Language
+  ) |>
+  mutate(Country = "Estonia")
+
+lithuania_table <- lithuania_table |>
+  rename(
+    Program_Title = Title,
+    Institution = University,
+    Level = Degree,
+    Duration = Duration,
+    Tuition = Tuition,
+    Link = Link,
+    Language = Language
+  ) |>
+  mutate(Country = "Lithuania")
+
+norway_table <- norway_table |>
+  rename(
+    Institution = University,
+    Program_Title = Title,
+    Level = Level,
+    Link = Link,
+    Duration = Duration_years,
+    ECTS = ECTS,
+    Language = Language
+  ) |>
+  mutate(Country = "Norway")
+
+poland_table <- poland_table |>
+  rename(
+    Field = Area,
+    Program_Title = Programme,
+    Level = Level,
+    Form = Mode,
+    Institution = University,
+    Institution_URL = University_URL,
+    Link = Programme_URL,
+    Contact_Email = Contact,
+    Language = Language
+  ) |>
+  mutate(Country = "Poland")
+
+slovenia_table <- slovenia_table |>
+  rename(
+    Level = Level,
+    Program_Title = Programme,
+    Institution = Institution,
+    Language = Language
+  ) |>
+  mutate(
+    Country = "Slovenia",
+    Link = "https://studyinslovenia.si/study/programmes-in-english/"
+  )
+
+spain_table <- spain_table |>
+  rename(
+    Institution = University,
+    Program_Title = Degree,
+    Level = Level,
+    Language = Language,
+    Field = Area,
+    ECTS_raw = ECTS,
+    Link = Program_Link
+  ) |>
+  mutate(
+    ECTS = as.numeric(str_extract(ECTS_raw, "^\\d+")),
+    Duration = as.numeric(str_extract(ECTS_raw, "(?<=\\().+?(?=\\syears?\\))")),
+    Country = "Spain"
+  ) |>
+  select(-ECTS_raw)
+
+sweden_table <- sweden_table |>
+  rename(
+    Program_Title = Title,
+    Level = Study_Level,
+    Institution = University,
+    City = City,
+    Field = Field,
+    Language = Language,
+    Credits_raw = Credits
+  ) |>
+  mutate(
+    ECTS = as.numeric(str_extract(Credits_raw, "^\\d+")),
+    Duration = case_when(
+      ECTS == 60 ~ 1,
+      ECTS == 90 ~ 1.5,
+      ECTS == 120 ~ 2,
+      ECTS == 180 ~ 3,
+      ECTS == 240 ~ 4,
+      TRUE ~ NA_real_
+    ),
+    Country = "Sweden",
+    Link = "https://studyinsweden.se/subjects"
+  ) |>
+  select(-Credits_raw)
+
+turkey_table <- turkey_table |>
+  rename(
+    Institution = University,
+    Program_Title = Programme,
+    City = City,
+    Level = Study_Level,
+    Form = Study_Type,
+    Language = Study_Language,
+    Tuition_raw = Price
+  ) |>
+  mutate(
+    Tuition = as.numeric(gsub("\\D", "", Tuition_raw)),
+    Country = "Turkey",
+    Link = "https://www.studyinturkiye.gov.tr/StudySearch/List"
+  ) |>
+  select(-Tuition_raw)
+
+```
+
+###Unify all the datasets in a single one 
+```{r}
+merge_all_programs <- function(...) {
+  datasets <- list(...)
+  
+  # Convert all columns to character to avoid type conflicts
+  datasets <- lapply(datasets, function(df) {
+    df[] <- lapply(df, as.character)
+    return(df)
+  })
+  
+  # Bind all rows into a single dataset
+  full_dataset <- bind_rows(datasets)
+  
+  return(full_dataset)
+}
+
+programs_EU <- merge_all_programs(
+  austria_table,
+  belgium_table,
+  croatia_table,
+  cyprus_table,
+  denmark_table,
+  estonia_table,
+  lithuania_table,
+  norway_table,
+  poland_table,
+  slovenia_table,
+  spain_table,
+  sweden_table,
+  turkey_table
+)
+
+
+```
+
+###Let's check the % of NA per variable and let's see if we need to change something 
+```{r}
+
+na_summary <- programs_EU |>
+  summarise(across(everything(), ~ mean(is.na(.)))) |>
+  pivot_longer(cols = everything(), names_to = "Variable", values_to = "NA_Percent") |>
+  mutate(NA_Percent = NA_Percent * 100) |> 
+  mutate(na_status = case_when(
+    NA_Percent < 25 ~ "OK",
+    NA_Percent >= 25 & NA_Percent < 50 ~ "Needs attention",
+    NA_Percent >= 50 & NA_Percent < 75 ~ "Hard to fix",
+    NA_Percent >= 75 ~ "Consider dropping"
+  ))
+
+ggplot(na_summary, aes(x = reorder(Variable, -NA_Percent), y = NA_Percent, fill = na_status)) +
+  geom_bar(stat = "identity") +
+  geom_hline(yintercept = 50, linetype = "dashed", color = "black", size = 1) +
+  coord_flip() +
+  scale_fill_manual(
+    values = c(
+      "OK" = "green",
+      "Needs attention" = "yellow",
+      "Hard to fix" = "orange",
+      "Consider dropping" = "red"
+    ),
+    name = "NA Status",
+    labels = c(
+      "OK" = "OK (<25%)",
+      "Needs attention" = "Some issues (25–50%)",
+      "Hard to fix" = "Difficult to fix (50–75%)",
+      "Consider dropping" = "Better to drop (>75%)"
+    )
+  ) +
+  labs(
+    title = "Percentage of NA by Variable",
+    x = "Variable",
+    y = "% Missing"
+  ) +
+  theme_minimal()
+
+```
+
+###Normalize the Level variable 
+```{r}
+programs_EU <- programs_EU |> 
+  mutate(Level = case_when(
+    str_detect(tolower(Level), "phd|doctor|doctoral") ~ "PhD",
+    str_detect(tolower(Level), "master|ma|msc|mba|long cycle") ~ "Master",
+    str_detect(tolower(Level), "bachelor") ~ "Bachelor",
+    str_detect(tolower(Level), "integrated") ~ "Integrated Bachelor + Master",
+    str_detect(tolower(Level), "diploma") ~ "Diploma",
+    str_detect(tolower(Level), "postgraduate|advanced postgraduate") ~ "Postgraduate",
+    str_detect(tolower(Level), "summer|winter school") ~ "Short-term",
+    str_detect(tolower(Level), "academy profession|top-up|short-term|non-degree|one-year|preparatory") ~ "Other",
+    str_trim(Level) == "" | is.na(Level) ~ NA_character_,
+    TRUE ~ "Other"
+  ))
+
+unique(programs_EU$Level)
+```
+### Normalize the Language variable 
+```{r}
+known_langs <- c("english", "french", "german", "spanish", "italian", "portuguese",
+                 "russian", "arabic", "chinese", "turkish", "korean", "greek",
+                 "polish", "ukrainian", "armenian", "bulgarian", "other", "mixed")
+
+simplify_language <- function(text) {
+  if (is.na(text) || trimws(text) %in% c("-", "", " ")) return(NA)
+
+  text_clean <- text |> 
+    tolower() |> 
+    str_replace_all("[^a-z/ ,]", "") |> 
+    str_replace_all("\\band\\b|\\bor\\b|/", ",") |> 
+    str_replace_all(",{2,}", ",") |> 
+    str_replace_all("^,|,$", "") |> 
+    trimws()
+
+  langs <- unlist(str_split(text_clean, ","))
+  langs <- trimws(langs)
+  langs <- langs[langs %in% known_langs]
+  langs <- unique(langs)
+
+  if (length(langs) == 0) return(NA)
+  if (length(langs) == 1) return(str_to_title(langs))
+  return("Multilingual")
+}
+
+programs_EU <- programs_EU |> 
+  mutate(Language_simplified = sapply(Language, simplify_language)) |> 
+  mutate(Language_simplified = sapply(Language, simplify_language)) |> 
+  mutate(Language = Language_simplified) |> 
+  select(-Language_simplified)
+
+unique(programs_EU$Language)
+```
+
+###Let's try to reduce the NAs for ECTS 
+```{r}
+
+ects_bachelor_by_country <- c(
+  "Austria"    = 180,
+  "Belgium"    = 180,
+  "Croatia"    = 180,
+  "Cyprus"     = 240,
+  "Denmark"    = 180,
+  "Estonia"    = 180,
+  "Lithuania"  = 180,
+  "Norway"     = 180,
+  "Poland"     = 180,
+  "Slovenia"   = 180,
+  "Spain"      = 240,
+  "Sweden"     = 180,
+  "Turkey"     = 240
+)
+
+programs_EU <- programs_EU |> 
+  mutate(
+    ECTS = ifelse(
+      is.na(ECTS) & Level == "Bachelor" & Country %in% names(ects_bachelor_by_country),
+      ects_bachelor_by_country[Country],
+      ECTS
+    )
+  ) |>
+  mutate(
+    ECTS = case_when(
+      str_detect(ECTS, "^De\\s\\d+\\sà\\s\\d+$") ~ {
+        str_extract_all(ECTS, "\\d+") |> 
+          map_dbl(~ mean(as.numeric(.)))
+      },
+      str_detect(ECTS, "\\d+") ~ {
+        as.numeric(str_extract(ECTS, "\\d+\\.?\\d*"))
+      },
+      TRUE ~ NA_real_
+    )
+  )
+
+```
+
+###Cost of Living per country 
+```{r}
+#Scraping the website 'numbeo'
+
+countries <- c("Austria", "Estonia", "Spain", "Lithuania", "Sweden", 
+               "Norway", "Turkey", "Belgium", "Slovenia", "Cyprus", 
+               "Poland", "Denmark", "Croatia")
+
+get_numbeo_url <- function(country) {
+  paste0("https://www.numbeo.com/cost-of-living/country_result.jsp?country=", 
+         URLencode(country))
+}
+
+scrape_numbeo_info <- function(country) {
+  url <- get_numbeo_url(country)
+  page <- tryCatch(read_html(url), error = function(e) return(NULL))
+  if (is.null(page)) return(NULL)
+
+  rows <- page |>  html_nodes("table.data_wide_table tr")
+
+  data <- rows |> 
+    map_df(function(row) {
+      label <- row |>  html_node("td:nth-child(1)") |>  html_text(trim = TRUE)
+      value <- row |>  html_node("td:nth-child(2) span.first_currency") %>% html_text(trim = TRUE)
+      tibble(Label = label, Value = value)
+    }) |> 
+    filter(Label %in% c("Meal, Inexpensive Restaurant",
+                       "Meal for 2 People, Mid-range Restaurant, Three-course",
+                       "Monthly Pass (Regular Price)",
+                       "Basic (Electricity, Heating, Cooling, Water, Garbage) for 85m2 Apartment",
+                       "Fitness Club, Monthly Fee for 1 Adult",
+                       "Apartment (1 bedroom) in City Centre",
+                       "Apartment (1 bedroom) Outside of Centre",
+                       "Average Monthly Net Salary (After Tax)")) |> 
+    mutate(Country = country)
+
+  return(data)
+}
+
+cost_of_living_data <- bind_rows(lapply(countries, scrape_numbeo_info)) 
+View(cost_of_living_data)
+```
+
+####Adding an API to get the cost in € and $ from https://exchangerate.host/
+```{r}
+#file.edit("~/.Renviron") -> put here you API from the website "https://exchangerate.host/"
+readRenviron("~/.Renviron")  
+access_key <- Sys.getenv("EXCHANGE_API_KEY")
+
+url <- paste0("https://api.exchangerate.host/live?access_key=", access_key)
+
+res <- GET(url)
+stop_for_status(res)
+data <- content(res, as = "parsed", simplifyVector = TRUE)
+
+quotes <- data$quotes
+
+wanted <- c("PLN", "TRY", "DKK", "NOK", "EUR", "SEK")
+wanted_quotes <- quotes[names(quotes) %in% paste0("USD", wanted)]
+
+exchange_table <- enframe(wanted_quotes, name = "pair", value = "usd_to_currency") %>%
+  mutate(
+    usd_to_currency = as.numeric(usd_to_currency),
+    Currency = gsub("USD", "", pair),
+    to_USD = 1 / usd_to_currency,
+    to_EUR = to_USD / (1 / as.numeric(quotes$USDEUR))
+  ) |> 
+  select(Currency, usd_to_currency, to_USD, to_EUR)
+
+print(exchange_table)
+```
+
+####Normalize the price in € and $
+```{r}
+country_currency <- c(
+  "Austria" = "EUR",
+  "Estonia" = "EUR",
+  "Spain" = "EUR",
+  "Lithuania" = "EUR",
+  "Sweden" = "SEK",       
+  "Norway" = "NOK",
+  "Turkey" = "TRY",
+  "Belgium" = "EUR",
+  "Slovenia" = "EUR",
+  "Cyprus" = "EUR",
+  "Poland" = "PLN",
+  "Denmark" = "DKK",
+  "Croatia" = "EUR"
+)
+
+cost_of_living_data <- cost_of_living_data |> 
+  mutate(
+    Value = str_replace_all(Value, "[^0-9.,]", ""),      
+    Value = str_replace_all(Value, ",", ""),             
+    Value = as.numeric(Value),
+    Currency = country_currency[Country], 
+  )
+
+cost_of_living <- cost_of_living_data |> 
+  left_join(exchange_table, by = "Currency") |> 
+  mutate(
+    Value_EUR = round(Value * to_EUR, 2),
+    Value_USD = round(Value * to_USD, 2)
+  ) |> 
+  select(Label, Value_EUR, Value_USD, Country)
+
+#write.csv(cost_of_living, "cost_of_living.csv", row.names = FALSE)
+
+```
+
+###Adding a variable to indicate countries with free university tuition for EU students
+```{r}
+free_tuition_countries <- c("Austria", "Denmark", "Sweden", "Norway", "Slovenia", 
+                            "Croatia")
+
+programs_EU <- programs_EU |>
+  mutate(Free_Tuition_EU = ifelse(Country %in% free_tuition_countries, "Yes", "No"))
+```
+
+###Removing those variable that have more than >50% of NAs
+```{r}
+remove_high_na_columns <- function(df, threshold = 0.5) {
+  na_ratio <- colMeans(is.na(df))
+  df_filtered <- df[, na_ratio <= threshold]
+  return(df_filtered)
+}
+
+programs_EU_final <- remove_high_na_columns(programs_EU)
+
+na_percent <- colMeans(is.na(programs_EU))
+removed_columns <- names(na_percent[na_percent > 0.5])
+print(removed_columns)
+```
+
+###Adding the Latitude and Longitude to the main dataset 
+```{r}
+
+eter <- read_excel("5-eter_geocoded.xlsx")
+programs <- programs_EU_final
+
+clean_names <- function(x) {
+  x %>%
+    tolower() %>%
+    gsub("[àáâä]", "a", .) %>%
+    gsub("[èéêë]", "e", .) %>%
+    gsub("[ìíîï]", "i", .) %>%
+    gsub("[òóôö]", "o", .) %>%
+    gsub("[ùúûü]", "u", .) %>%
+    gsub("[^a-z0-9]", "", .) %>%
+    trimws()
+}
+
+programs <- programs %>%
+  mutate(Institution_clean = clean_names(Institution))
+
+eter <- eter %>%
+  mutate(English_clean = clean_names(English_Institution_Name),
+         API_clean = clean_names(API_name))
+
+match_idx <- amatch(programs$Institution_clean, eter$English_clean, maxDist = 3, method = "jw")
+
+programs$lat_ETER <- NA
+programs$lon_ETER <- NA
+
+matched <- !is.na(match_idx)
+programs$lat_ETER[matched] <- eter$lat_ETER[match_idx[matched]]
+programs$lon_ETER[matched] <- eter$lon_ETER[match_idx[matched]]
+
+sum(is.na(programs$lat_ETER))  
+sum(is.na(programs$lon_ETER))
+
+colSums(is.na(programs[, c("lat_ETER", "lon_ETER")]))
+
+programs <- programs |> select(-Institution_clean) |> 
+  rename(
+    latitude = lat_ETER,
+    longitude = lon_ETER)
+
+#write.csv(programs, "programs.csv", row.names = FALSE)
+
+
+```
 
 
 
