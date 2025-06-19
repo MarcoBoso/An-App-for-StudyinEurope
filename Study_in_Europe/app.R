@@ -71,36 +71,55 @@ ui <- navbarPage("Study in Europe",
                               )
                             ),
                             uiOutput("selected_countries_reference"),
-                            tabsetPanel(
-                              tabPanel("Food",
-                                       selectInput("currency_food", "Select currency:", c("Value_EUR", "Value_USD"), "Value_EUR"),
-                                       h4("Meal, Inexpensive Restaurant"), plotlyOutput("plot_meal1"),
-                                       h4("Meal for 2 People, Mid-range Restaurant"), plotlyOutput("plot_meal2")
-                              ),
-                              tabPanel("Transportation",
-                                       selectInput("currency_transport", "Select currency:", c("Value_EUR", "Value_USD"), "Value_EUR"),
-                                       plotlyOutput("plot_transport")
-                              ),
-                              tabPanel("Utilities",
-                                       selectInput("currency_utilities", "Select currency:", c("Value_EUR", "Value_USD"), "Value_EUR"),
-                                       plotlyOutput("plot_utilities")
-                              ),
-                              tabPanel("Fitness",
-                                       selectInput("currency_fitness", "Select currency:", c("Value_EUR", "Value_USD"), "Value_EUR"),
-                                       plotlyOutput("plot_fitness")
-                              ),
-                              tabPanel("Rent",
-                                       selectInput("currency_rent", "Select currency:", c("Value_EUR", "Value_USD"), "Value_EUR"),
-                                       h4("Apartment (1 bedroom) in City Centre"), plotlyOutput("plot_rent1"),
-                                       h4("Apartment (1 bedroom) Outside of Centre"), plotlyOutput("plot_rent2")
-                              ),
-                              tabPanel("Salary",
-                                       selectInput("currency_salary", "Select currency:", c("Value_EUR", "Value_USD"), "Value_EUR"),
-                                       plotlyOutput("plot_salary")
-                              )
-                            )
-                          )
-                 )
+  tabsetPanel(
+  tabPanel("Resturant",
+           selectInput("currency_food", "Select currency:", c("EUR", "PLN", "TRY", "DKK", "NOK", "EUR", "SEK", "RSD", "USD"), "EUR"),
+           h4("Meal, Inexpensive Restaurant"), plotlyOutput("plot_meal1"),
+           h4("Meal for 2 People, Mid-range Restaurant, Three-course"), plotlyOutput("plot_meal2"),
+           h4("Bottle of Wine (Mid-Range)"), plotlyOutput("plot_wine"),
+           h4("Domestic Beer (0.5 liter bottle)"), plotlyOutput("plot_beer")
+  ),
+  tabPanel("Grocery",
+           selectInput("currency_grocery", "Select currency:", c("EUR", "PLN", "TRY", "DKK", "NOK", "EUR", "SEK", "RSD", "USD"), "EUR"),
+           h4("Milk (regular), (1 liter)"), plotlyOutput("plot_milk"),
+           h4("Loaf of Fresh White Bread (500g)"), plotlyOutput("plot_bread"),
+           h4("Rice (white), (1kg)"), plotlyOutput("plot_rice"),
+           h4("Eggs (regular) (12)"), plotlyOutput("plot_eggs"),
+           h4("Local Cheese (1kg)"), plotlyOutput("plot_cheese"),
+           h4("Chicken Fillets (1kg)"), plotlyOutput("plot_chicken"),
+           h4("Apples (1kg)"), plotlyOutput("plot_apples"),
+           h4("Banana (1kg)"), plotlyOutput("plot_banana"),
+           h4("Lettuce (1 head)"), plotlyOutput("plot_lettuce"),
+           h4("Onion (1kg)"), plotlyOutput("plot_onion"),
+           h4("Potato (1kg)"), plotlyOutput("plot_potato"),
+           h4("Water (1.5 liter bottle)"), plotlyOutput("plot_water")
+  ),
+  tabPanel("Transportation",
+           selectInput("currency_transport", "Select currency:", c("EUR", "PLN", "TRY", "DKK", "NOK", "EUR", "SEK", "RSD", "USD"), "EUR"),
+           h4("Monthly Pass (Regular Price)"), plotlyOutput("plot_transport"),
+           h4("One-way Ticket (Local Transport)"), plotlyOutput("plot_ticket")
+  ),
+  tabPanel("Utilities",
+           selectInput("currency_utilities", "Select currency:", c("EUR", "PLN", "TRY", "DKK", "NOK", "EUR", "SEK", "RSD", "USD"), "EUR"),
+           h4("Basic (Electricity, Heating, Cooling, Water, Garbage) for 85m2 Apartment"), plotlyOutput("plot_utilities"),
+           h4("Mobile Phone Monthly Plan with Calls and 10GB+ Data"), plotlyOutput("plot_mobile")
+  ),
+  tabPanel("Fitness",
+           selectInput("currency_fitness", "Select currency:", c("EUR", "PLN", "TRY", "DKK", "NOK", "EUR", "SEK", "RSD", "USD"), "EUR"),
+           h4("Fitness Club, Monthly Fee for 1 Adult"), plotlyOutput("plot_fitness")
+  ),
+  tabPanel("Rent",
+           selectInput("currency_rent", "Select currency:", c("EUR", "PLN", "TRY", "DKK", "NOK", "EUR", "SEK", "RSD", "USD"), "EUR"),
+           h4("Apartment (1 bedroom) in City Centre"), plotlyOutput("plot_rent1"),
+           h4("Apartment (1 bedroom) Outside of Centre"), plotlyOutput("plot_rent2")
+  ),
+  tabPanel("Salary",
+           selectInput("currency_salary", "Select currency:", c("EUR", "PLN", "TRY", "DKK", "NOK", "EUR", "SEK", "RSD", "USD"), "EUR"),
+           h4("Average Monthly Net Salary (After Tax)"), plotlyOutput("plot_salary")
+  )
+)
+)
+)
 )
 
 # === Server ===
@@ -110,7 +129,7 @@ server <- function(input, output, session) {
       title = "Welcome to the app of Study in Europe",
       HTML("<p>How this app work:</p>
             <p>First you will find the <strong>Programs</strong> section, here you can search and filter for different European university programs by country, level, language, tuition, and ECTS credits. You can select up to 10 programs to compare!.</p>
-            <p>Then there is the <strong>Cost of Living</strong> section, here you can compare average living expenses (you can choose to see them in EUR or USD) across countries. The countries selected from the Programs tab are highlighted in bold in the differents charts.</p>
+            <p>Then there is the <strong>Cost of Living</strong> section, here you can compare average living expenses (you can choose to see them in different currencies) across countries. The countries selected from the Programs tab are highlighted in bold in the differents charts.</p>
             <p>Enjoy the experience!</p>"),
       easyClose = TRUE,
       footer = modalButton("Close")
@@ -210,14 +229,14 @@ server <- function(input, output, session) {
       
       if (label == "Average Monthly Net Salary (After Tax)") {
         pal <- colorRampPalette(c("red", "yellow", "green"))(nrow(data))
-        data$Color <- pal[rank(data$Value)]  # higher values get greener colors
+        data$Color <- pal[rank(data$Value)]  
       } else {
         pal <- colorRampPalette(c("green", "yellow", "red"))(nrow(data))
-        data$Color <- pal[rank(data$Value)]  # lower values get greener colors
+        data$Color <- pal[rank(data$Value)]  
       }
       
       data$CountryLabel <- sapply(data$Country, bold_if_selected, selected_countries = selected)
-
+      
       
       plot <- ggplot(data, aes(x = Value, y = reorder(CountryLabel, Value), text = paste0("Country: ", Country, "\nValue: ", round(Value, 2), " ", gsub("Value_", "", col)))) +
         geom_bar(stat = "identity", fill = data$Color) +
@@ -230,17 +249,49 @@ server <- function(input, output, session) {
     })
   }
   
+  
   output$plot_meal1 <- render_cost_plot("Meal, Inexpensive Restaurant", "currency_food")
   output$plot_meal2 <- render_cost_plot("Meal for 2 People, Mid-range Restaurant, Three-course", "currency_food")
+  output$plot_wine  <- render_cost_plot("Bottle of Wine (Mid-Range)", "currency_food")
+  output$plot_beer  <- render_cost_plot("Domestic Beer (0.5 liter bottle)", "currency_food")
+  
+  # Grocery
+  output$plot_milk     <- render_cost_plot("Milk (regular), (1 liter)", "currency_grocery")
+  output$plot_bread    <- render_cost_plot("Loaf of Fresh White Bread (500g)", "currency_grocery")
+  output$plot_rice     <- render_cost_plot("Rice (white), (1kg)", "currency_grocery")
+  output$plot_eggs     <- render_cost_plot("Eggs (regular) (12)", "currency_grocery")
+  output$plot_cheese   <- render_cost_plot("Local Cheese (1kg)", "currency_grocery")
+  output$plot_chicken  <- render_cost_plot("Chicken Fillets (1kg)", "currency_grocery")
+  output$plot_apples   <- render_cost_plot("Apples (1kg)", "currency_grocery")
+  output$plot_banana   <- render_cost_plot("Banana (1kg)", "currency_grocery")
+  output$plot_lettuce  <- render_cost_plot("Lettuce (1 head)", "currency_grocery")
+  output$plot_onion    <- render_cost_plot("Onion (1kg)", "currency_grocery")
+  output$plot_potato   <- render_cost_plot("Potato (1kg)", "currency_grocery")
+  output$plot_water    <- render_cost_plot("Water (1.5 liter bottle)", "currency_grocery")
+  
+  # Transportation
   output$plot_transport <- render_cost_plot("Monthly Pass (Regular Price)", "currency_transport")
+  output$plot_ticket    <- render_cost_plot("One-way Ticket (Local Transport)", "currency_transport")
+  
+  # Utilities
   output$plot_utilities <- render_cost_plot("Basic (Electricity, Heating, Cooling, Water, Garbage) for 85m2 Apartment", "currency_utilities")
+  output$plot_mobile    <- render_cost_plot("Mobile Phone Monthly Plan with Calls and 10GB+ Data", "currency_utilities")
+  
+  # Fitness
   output$plot_fitness <- render_cost_plot("Fitness Club, Monthly Fee for 1 Adult", "currency_fitness")
+  
+  # Rent
   output$plot_rent1 <- render_cost_plot("Apartment (1 bedroom) in City Centre", "currency_rent")
   output$plot_rent2 <- render_cost_plot("Apartment (1 bedroom) Outside of Centre", "currency_rent")
+  
+  # Salary
   output$plot_salary <- render_cost_plot("Average Monthly Net Salary (After Tax)", "currency_salary", reverse = TRUE)
 }
 
 shinyApp(ui = ui, server = server)
+
+
+
 
 
 

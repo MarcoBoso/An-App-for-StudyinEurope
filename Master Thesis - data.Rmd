@@ -21,6 +21,7 @@ library(ggplot2)
 library(tibble)
 library(stringdist)
 library(fuzzyjoin)
+library(chromote)
 ```
 
 ```{r}
@@ -1570,10 +1571,177 @@ View(cyprus_table)
 
 ```
 
+###Germany
+```{r}
+offsets <- seq(0, 2400, by = 10)
+urls <- paste0(
+  "https://www2.daad.de/deutschland/studienangebote/international-programmes/en/result/?limit=10&offset=",
+  offsets
+)
+
+scrape_daad_page <- function(url) {
+  message("Scraping: ", url)
+
+  b <- ChromoteSession$new()
+  b$Page$navigate(url)
+  b$Page$loadEventFired()
+  Sys.sleep(10)
+
+  html_string <- b$Runtime$evaluate("document.documentElement.outerHTML")$result$value
+  b$close()
+  html <- read_html(html_string)
+
+  blocks <- html_elements(html, "div[data-id]")
+  if (length(blocks) == 0) return(NULL)
+
+  map_dfr(blocks, function(block) {
+    get_text <- function(css) {
+      node <- html_element(block, css)
+      if (length(node) == 0 || is.na(node)) return(NA)
+      html_text(node, trim = TRUE)
+    }
+
+    get_field_by_label <- function(label) {
+      item <- html_elements(block, "ul.c-ad-carousel__data-list li") %>%
+        keep(~ html_element(.x, "h3") %>% html_text(trim = TRUE) == label)
+      if (length(item) == 0) return(NA)
+      html_element(item[[1]], ".c-ad-carousel__data-item") %>% html_text(trim = TRUE)
+    }
+
+    tibble(
+      Level         = get_text(".c-ad-carousel__course-type"),
+      Institution   = get_text(".js-course-academy"),
+      Program_Title = get_text(".js-course-title"),
+      Field         = get_field_by_label("Subject"),
+      Cost          = get_field_by_label("Costs"),
+      Language      = get_field_by_label("Language"),
+      Link          = paste0("https://www2.daad.de", html_element(block, "a.js-course-detail-link") %>% html_attr("href"))
+    )
+  })
+}
+
+results <- map(urls, safely(scrape_daad_page))
+
+germany_table <- results %>%
+  map("result") %>%
+  compact() %>%
+  bind_rows()
+
+germany_table <- germany_table %>%
+  mutate(
+    Level       = gsub("•", "", Level) %>% trimws(),
+    Institution = gsub("•", "", Institution) %>% trimws()
+  )
+
+View(germany_table)
+
+#write.csv(germany_table, "programs_germany.csv", row.names = FALSE)
+
+
+```
+
+###Luxembourg
+```{r}
+
+url <- "https://www.uni.lu/en/education/study-programme-overview/"
+page <- read_html(url)
+cards <- html_elements(page, ".card__container")
+
+luxembourg_table <- map_dfr(cards, function(card) {
+  title <- card %>% html_element(".card__title") %>% html_text(trim = TRUE)
+  type  <- card %>% html_element(".card__category") %>% html_text(trim = TRUE)
+  topic <- card %>% html_element(".card__topic") %>% html_text(trim = TRUE)
+  link  <- card %>% html_element("a.card__link") %>% html_attr("href")
+  link  <- if (!is.na(link)) paste0("https://www.uni.lu", link) else NA
+
+  # ✅ Extract language lines from <li> inside card__lang_list
+  lang_list <- html_elements(card, "ul.card__lang_list li")
+
+  if (length(lang_list) > 0) {
+    langs <- lang_list %>%
+      html_text(trim = TRUE) %>%
+      str_squish() %>%
+      paste(collapse = ", ")
+  } else {
+    langs <- NA_character_
+  }
+
+  tibble(
+    Program_title = title,
+    Level         = type,
+    Field         = topic,
+    Languages     = langs,
+    Link          = link
+  )
+})
+
+luxembourg_table <- luxembourg_table %>%
+  mutate(
+    Languages = case_when(
+      str_detect(Field, "Science|Technology|Mathematics|Engineering|Computer") ~ "English, French",
+      str_detect(Field, "Law|Economics|Finance")                                ~ "French, English",
+      str_detect(Field, "Humanities|Social|Education|Philosophy|Psychology")    ~ "French, German",
+      str_detect(Field, "Medicine|Medical|Health|Biomedicine")                  ~ "French, German",
+      str_detect(Field, "Continuing Education|Management")                      ~ "English, French",
+      TRUE                                                                      ~ NA_character_
+    )
+  ) %>%
+  mutate(Institution = "Université du Luxembourg")
+
+View(luxembourg_table)
+
+#write.csv(luxembourg_table, "programs_luxembourg.csv", row.names = FALSE)
+
+```
+
+###Serbia
+```{r}
+scrape_programmes_page <- function(page_num) {
+  message("Scraping page ", page_num)
+  
+  url <- paste0("https://www.bazaobrazovanja.rs/en/programmes?page=", page_num)
+  page <- tryCatch(read_html(url), error = function(e) return(NULL))
+  if (is.null(page)) return(NULL)
+  
+  rows <- html_elements(page, "tr.programme")
+  
+  map_dfr(rows, function(row) {
+    program_node <- html_element(row, ".resource-title a")
+    program_name <- html_text(program_node, trim = TRUE)
+    link <- html_attr(program_node, "href")
+    full_link <- if (!is.na(link)) paste0("https://www.bazaobrazovanja.rs", link) else NA
+
+    institution <- html_element(row, ".programme-institution-title a") %>% html_text(trim = TRUE)
+    language <- html_element(row, ".programme-language") %>% html_text(trim = TRUE)
+    level <- html_element(row, "td.type") %>% html_text(trim = TRUE)
+
+    tibble(
+      Program_name = program_name,
+      Institution = institution,
+      Level = level,
+      Language = language,
+      Link = full_link
+    )
+  })
+}
+
+results <- map(1:178, safely(scrape_programmes_page))
+
+serbia_table <- results %>%
+  map("result") %>%
+  compact() %>%
+  bind_rows()
+
+View(serbia_table)
+
+#write.csv(serbia_table, "programs_serbia.csv", row.names = FALSE)
+```
+
 ##Creating the dataset programs_EU
 
 ###Normalize the names of the variables per single datasets
 ```{r}
+
 austria_table <- austria_table |>
   rename(
     Program_Title = Title,
@@ -1650,6 +1818,12 @@ estonia_table <- estonia_table |>
   ) |>
   mutate(Country = "Estonia")
 
+germany_table <- germany_table |> 
+  rename(
+    Tuition = Cost
+  ) |> 
+  mutate(Country = "Germany")
+  
 lithuania_table <- lithuania_table |>
   rename(
     Program_Title = Title,
@@ -1661,6 +1835,13 @@ lithuania_table <- lithuania_table |>
     Language = Language
   ) |>
   mutate(Country = "Lithuania")
+
+luxembourg_table <- luxembourg_table |> 
+  rename(
+    Program_Title = Program_title,
+    Language = Languages
+  )  |> 
+  mutate(Country = "Luxembourg")
 
 norway_table <- norway_table |>
   rename(
@@ -1687,6 +1868,12 @@ poland_table <- poland_table |>
     Language = Language
   ) |>
   mutate(Country = "Poland")
+
+serbia_table <- serbia_table |> 
+  rename(
+    Program_Title = Program_name
+  ) |> 
+  mutate(Country = "Serbia")
 
 slovenia_table <- slovenia_table |>
   rename(
@@ -1766,13 +1953,11 @@ turkey_table <- turkey_table |>
 merge_all_programs <- function(...) {
   datasets <- list(...)
   
-  # Convert all columns to character to avoid type conflicts
   datasets <- lapply(datasets, function(df) {
     df[] <- lapply(df, as.character)
     return(df)
   })
   
-  # Bind all rows into a single dataset
   full_dataset <- bind_rows(datasets)
   
   return(full_dataset)
@@ -1785,9 +1970,12 @@ programs_EU <- merge_all_programs(
   cyprus_table,
   denmark_table,
   estonia_table,
+  germany_table,
   lithuania_table,
+  luxembourg_table,
   norway_table,
   poland_table,
+  serbia_table,
   slovenia_table,
   spain_table,
   sweden_table,
@@ -1831,24 +2019,26 @@ ggplot(na_summary, aes(x = reorder(Variable, -NA_Percent), y = NA_Percent, fill 
     )
   ) +
   labs(
-    title = "Percentage of NA by Variable",
+    title = "Missing data before cleaning",
     x = "Variable",
     y = "% Missing"
   ) +
-  theme_minimal()
+  theme_minimal() 
+
 
 ```
 
 ###Normalize the Level variable 
 ```{r}
+
 programs_EU <- programs_EU |> 
   mutate(Level = case_when(
+    str_detect(tolower(Level), "\\bdiploma\\b") ~ "Diploma",  # parola intera
+    str_detect(tolower(Level), "postgraduate|advanced postgraduate") ~ "Postgraduate",
     str_detect(tolower(Level), "phd|doctor|doctoral") ~ "PhD",
     str_detect(tolower(Level), "master|ma|msc|mba|long cycle") ~ "Master",
     str_detect(tolower(Level), "bachelor") ~ "Bachelor",
     str_detect(tolower(Level), "integrated") ~ "Integrated Bachelor + Master",
-    str_detect(tolower(Level), "diploma") ~ "Diploma",
-    str_detect(tolower(Level), "postgraduate|advanced postgraduate") ~ "Postgraduate",
     str_detect(tolower(Level), "summer|winter school") ~ "Short-term",
     str_detect(tolower(Level), "academy profession|top-up|short-term|non-degree|one-year|preparatory") ~ "Other",
     str_trim(Level) == "" | is.na(Level) ~ NA_character_,
@@ -1856,12 +2046,13 @@ programs_EU <- programs_EU |>
   ))
 
 unique(programs_EU$Level)
+
 ```
 ### Normalize the Language variable 
 ```{r}
 known_langs <- c("english", "french", "german", "spanish", "italian", "portuguese",
                  "russian", "arabic", "chinese", "turkish", "korean", "greek",
-                 "polish", "ukrainian", "armenian", "bulgarian", "other", "mixed")
+                 "polish", "ukrainian", "armenian", "bulgarian", "serbian", "other", "mixed")
 
 simplify_language <- function(text) {
   if (is.na(text) || trimws(text) %in% c("-", "", " ")) return(NA)
@@ -1903,9 +2094,12 @@ ects_bachelor_by_country <- c(
   "Cyprus"     = 240,
   "Denmark"    = 180,
   "Estonia"    = 180,
+  "Germany"    = 180,
   "Lithuania"  = 180,
+  "Luxembourg" = 180,
   "Norway"     = 180,
   "Poland"     = 180,
+  "Serbia"     = 180,
   "Slovenia"   = 180,
   "Spain"      = 240,
   "Sweden"     = 180,
@@ -1933,6 +2127,45 @@ programs_EU <- programs_EU |>
     )
   )
 
+#let's see now the number of NAs per variable 
+
+na_summary <- programs_EU |>
+  summarise(across(everything(), ~ mean(is.na(.)))) |>
+  pivot_longer(cols = everything(), names_to = "Variable", values_to = "NA_Percent") |>
+  mutate(NA_Percent = NA_Percent * 100) |> 
+  mutate(na_status = case_when(
+    NA_Percent < 25 ~ "OK",
+    NA_Percent >= 25 & NA_Percent < 50 ~ "Needs attention",
+    NA_Percent >= 50 & NA_Percent < 75 ~ "Hard to fix",
+    NA_Percent >= 75 ~ "Consider dropping"
+  ))
+
+ggplot(na_summary, aes(x = reorder(Variable, -NA_Percent), y = NA_Percent, fill = na_status)) +
+  geom_bar(stat = "identity") +
+  geom_hline(yintercept = 50, linetype = "dashed", color = "black", size = 1) +
+  coord_flip() +
+  scale_fill_manual(
+    values = c(
+      "OK" = "green",
+      "Needs attention" = "yellow",
+      "Hard to fix" = "orange",
+      "Consider dropping" = "red"
+    ),
+    name = "NA Status",
+    labels = c(
+      "OK" = "OK (<25%)",
+      "Needs attention" = "Some issues (25–50%)",
+      "Hard to fix" = "Difficult to fix (50–75%)",
+      "Consider dropping" = "Better to drop (>75%)"
+    )
+  ) +
+  labs(
+    title = "Missing data before cleaning",
+    x = "Variable",
+    y = "% Missing"
+  ) +
+  theme_minimal() 
+
 ```
 
 ###Cost of Living per country 
@@ -1941,7 +2174,7 @@ programs_EU <- programs_EU |>
 
 countries <- c("Austria", "Estonia", "Spain", "Lithuania", "Sweden", 
                "Norway", "Turkey", "Belgium", "Slovenia", "Cyprus", 
-               "Poland", "Denmark", "Croatia")
+               "Poland", "Denmark", "Croatia", "Germany", "Luxembourg", "Serbia")
 
 get_numbeo_url <- function(country) {
   paste0("https://www.numbeo.com/cost-of-living/country_result.jsp?country=", 
@@ -1963,7 +2196,23 @@ scrape_numbeo_info <- function(country) {
     }) |> 
     filter(Label %in% c("Meal, Inexpensive Restaurant",
                        "Meal for 2 People, Mid-range Restaurant, Three-course",
+                       "Milk (regular), (1 liter)",
+                       "Loaf of Fresh White Bread (500g)",
+                       "Rice (white), (1kg)",
+                       "Eggs (regular) (12)",
+                       "Local Cheese (1kg)",
+                       "Apples (1kg)",
+                       "Banana (1kg)",
+                       "Potato (1kg)",
+                       "Onion (1kg)",
+                       "Lettuce (1 head)",
+                       "Chicken Fillets (1kg)",
+                       "Water (1.5 liter bottle)", 
+                       "Bottle of Wine (Mid-Range)",	
+                       "Domestic Beer (0.5 liter bottle)",
+                       "One-way Ticket (Local Transport)",
                        "Monthly Pass (Regular Price)",
+                       "Mobile Phone Monthly Plan with Calls and 10GB+ Data",
                        "Basic (Electricity, Heating, Cooling, Water, Garbage) for 85m2 Apartment",
                        "Fitness Club, Monthly Fee for 1 Adult",
                        "Apartment (1 bedroom) in City Centre",
@@ -1992,7 +2241,7 @@ data <- content(res, as = "parsed", simplifyVector = TRUE)
 
 quotes <- data$quotes
 
-wanted <- c("PLN", "TRY", "DKK", "NOK", "EUR", "SEK")
+wanted <- c("PLN", "TRY", "DKK", "NOK", "EUR", "SEK", "RSD")
 wanted_quotes <- quotes[names(quotes) %in% paste0("USD", wanted)]
 
 exchange_table <- enframe(wanted_quotes, name = "pair", value = "usd_to_currency") %>%
@@ -2022,24 +2271,47 @@ country_currency <- c(
   "Cyprus" = "EUR",
   "Poland" = "PLN",
   "Denmark" = "DKK",
-  "Croatia" = "EUR"
+  "Croatia" = "EUR",
+  "Germany" = "EUR",
+  "Luxembourg" = "EUR",
+  "Serbia" = "RSD"
 )
 
 cost_of_living_data <- cost_of_living_data |> 
   mutate(
-    Value = str_replace_all(Value, "[^0-9.,]", ""),      
-    Value = str_replace_all(Value, ",", ""),             
+    Value = str_replace_all(Value, "[^0-9.,]", ""),
+    Value = str_replace_all(Value, ",", ""),
     Value = as.numeric(Value),
-    Currency = country_currency[Country], 
+    Currency = country_currency[Country]
   )
 
-cost_of_living <- cost_of_living_data |> 
+cost_data_joined <- cost_of_living_data |> 
   left_join(exchange_table, by = "Currency") |> 
+  mutate(EUR_base = Value * to_EUR)
+
+all_conversions <- exchange_table |> 
+  select(Target_Currency = Currency, Rate_to_EUR = to_EUR) |> 
+  bind_rows(tibble(Target_Currency = "USD", Rate_to_EUR = 1 / exchange_table$usd_to_currency[exchange_table$Currency == "EUR"]))
+
+converted_data <- cost_data_joined |> 
+  crossing(all_conversions) |> 
   mutate(
-    Value_EUR = round(Value * to_EUR, 2),
-    Value_USD = round(Value * to_USD, 2)
+    Converted_Value = round(EUR_base / Rate_to_EUR, 2)
   ) |> 
-  select(Label, Value_EUR, Value_USD, Country)
+  select(Label, Target_Currency, Converted_Value, Country)
+
+cost_of_living <- converted_data |> 
+  pivot_wider(
+    names_from = Target_Currency,
+    values_from = Converted_Value
+  ) 
+
+currency_columns <- setdiff(colnames(cost_of_living), c("Label", "Country"))
+
+cost_of_living <- cost_of_living |> 
+  select(Label, all_of(sort(currency_columns)), Country)
+
+View(cost_of_living)
 
 #write.csv(cost_of_living, "cost_of_living.csv", row.names = FALSE)
 
@@ -2067,6 +2339,7 @@ programs_EU_final <- remove_high_na_columns(programs_EU)
 na_percent <- colMeans(is.na(programs_EU))
 removed_columns <- names(na_percent[na_percent > 0.5])
 print(removed_columns)
+
 ```
 
 ###Adding the Latitude and Longitude to the main dataset 
@@ -2117,6 +2390,3 @@ programs <- programs |> select(-Institution_clean) |>
 
 
 ```
-
-
-
