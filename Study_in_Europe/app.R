@@ -124,12 +124,41 @@ ui <- navbarPage("Study in Europe",
 
 # === Server ===
 server <- function(input, output, session) {
+  
+  selected_currency <- reactiveVal("EUR")
+  
+  observeEvent({
+    input$currency_food
+    input$currency_grocery
+    input$currency_transport
+    input$currency_utilities
+    input$currency_fitness
+    input$currency_rent
+    input$currency_salary
+  }, {
+    latest <- input$currency_food %||% input$currency_grocery %||% input$currency_transport %||%
+      input$currency_utilities %||% input$currency_fitness %||% input$currency_rent %||%
+      input$currency_salary
+    if (!is.null(latest)) {
+      selected_currency(latest)
+      updateSelectInput(session, "currency_food", selected = latest)
+      updateSelectInput(session, "currency_grocery", selected = latest)
+      updateSelectInput(session, "currency_transport", selected = latest)
+      updateSelectInput(session, "currency_utilities", selected = latest)
+      updateSelectInput(session, "currency_fitness", selected = latest)
+      updateSelectInput(session, "currency_rent", selected = latest)
+      updateSelectInput(session, "currency_salary", selected = latest)
+    }
+  })
+  
   observeEvent(input$show_instructions, {
     showModal(modalDialog(
       title = "Welcome to the app of Study in Europe",
-      HTML("<p>How this app work:</p>
-            <p>First you will find the <strong>Programs</strong> section, here you can search and filter for different European university programs by country, level, language, tuition, and ECTS credits. You can select up to 10 programs to compare!.</p>
-            <p>Then there is the <strong>Cost of Living</strong> section, here you can compare average living expenses (you can choose to see them in different currencies) across countries. The countries selected from the Programs tab are highlighted in bold in the differents charts.</p>
+      HTML("<p>This app was designed and developed by <strong>Marco Boso</strong> as part of his <strong>Master's thesis</strong> in Computational Social Science at Universidad Carlos III de Madrid.</p>
+            <p>Thank you so much for trying this demo!</p>
+            <p>Here's how this app works:</p>
+            <p><strong>Programs</strong>: search and filter European university programs by country, level, language, tuition, and ECTS credits. You can select up to 10 programs to compare.</p>
+            <p><strong>Cost of Living</strong>: compare average living expenses (you can choose to view them in different currencies) across countries. Countries selected from the Programs tab are highlighted in bold in the charts.</p>
             <p>Enjoy the experience!</p>"),
       easyClose = TRUE,
       footer = modalButton("Close")
@@ -138,21 +167,27 @@ server <- function(input, output, session) {
   
   filtered_data <- reactive({
     data <- programs
-    if (input$search != "") data <- data |>  filter(grepl(input$search, Program_Title, ignore.case = TRUE))
-    if (length(input$country) > 0) data <- data |>  filter(Country %in% input$country)
-    if (length(input$level) > 0) data <- data |>  filter(Level %in% input$level)
+    if (input$search != "") data <- data |> filter(grepl(input$search, Program_Title, ignore.case = TRUE))
+    if (length(input$country) > 0) data <- data |> filter(Country %in% input$country)
+    if (length(input$level) > 0) data <- data |> filter(Level %in% input$level)
     if (length(input$language) > 0) data <- data |> filter(Language %in% input$language)
-    if (length(input$tuition) > 0) data <- data |>  filter(Free_Tuition_EU %in% input$tuition)
+    if (length(input$tuition) > 0) data <- data |> filter(Free_Tuition_EU %in% input$tuition)
     data <- data |> filter(is.na(ECTS) | (ECTS >= input$ects_range[1] & ECTS <= input$ects_range[2]))
     data
   })
   
   output$results_table <- renderDT({
     datatable(
-      filtered_data() |>  select(Program_Title, Institution, Level, Language, Country, ECTS, Free_Tuition_EU, Link),
+      filtered_data() |> select(Program_Title, Institution, Level, Language, Country, ECTS, Free_Tuition_EU, Link),
       escape = FALSE,
       selection = list(mode = "multiple", target = "row"),
-      options = list(pageLength = 7, dom = 'tip', autoWidth = TRUE),
+      options = list(
+        pageLength = 7,
+        dom = 'tip',
+        autoWidth = TRUE,
+        scrollY = "350px",
+        scrollCollapse = TRUE
+      ),
       rownames = FALSE,
       colnames = c("Program Title", "University", "Level", "Language", "Country", "ECTS", "Free Tuition EU", "Link")
     )
@@ -161,7 +196,15 @@ server <- function(input, output, session) {
   selected_programs <- reactive({
     data <- filtered_data()
     selected_rows <- input$results_table_rows_selected
-    if (length(selected_rows) > 10) selected_rows <- selected_rows[1:10]
+    if (length(selected_rows) > 10) {
+      selected_rows <- selected_rows[1:10]
+      showModal(modalDialog(
+        title = "Selection Limit Reached",
+        "You can select a maximum of 10 programs to compare!",
+        easyClose = TRUE,
+        footer = modalButton("OK")
+      ))
+    }
     if (length(selected_rows) == 0) return(NULL)
     selected <- unique(data[selected_rows, ]$Country)
     selected_countries(selected)
@@ -218,7 +261,7 @@ server <- function(input, output, session) {
   
   render_cost_plot <- function(label, currency_input, reverse = FALSE) {
     renderPlotly({
-      col <- input[[currency_input]]
+      col <- selected_currency()
       selected <- selected_countries()
       data <- cost_of_living |> 
         filter(Label == label) |> 
@@ -227,20 +270,16 @@ server <- function(input, output, session) {
         arrange(if (reverse) desc(Value) else Value) |> 
         mutate(Rank = row_number())
       
-      if (label == "Average Monthly Net Salary (After Tax)") {
-        pal <- colorRampPalette(c("red", "yellow", "green"))(nrow(data))
-        data$Color <- pal[rank(data$Value)]  
+      pal <- if (label == "Average Monthly Net Salary (After Tax)") {
+        colorRampPalette(c("red", "yellow", "green"))(nrow(data))
       } else {
-        pal <- colorRampPalette(c("green", "yellow", "red"))(nrow(data))
-        data$Color <- pal[rank(data$Value)]  
+        colorRampPalette(c("green", "yellow", "red"))(nrow(data))
       }
-      
+      data$Color <- pal[rank(data$Value)]
       data$CountryLabel <- sapply(data$Country, bold_if_selected, selected_countries = selected)
-      
       
       plot <- ggplot(data, aes(x = Value, y = reorder(CountryLabel, Value), text = paste0("Country: ", Country, "\nValue: ", round(Value, 2), " ", gsub("Value_", "", col)))) +
         geom_bar(stat = "identity", fill = data$Color) +
-        scale_fill_gradientn(colors = pal) +
         theme_minimal(base_size = 14) +
         labs(x = "", y = "") +
         theme(legend.position = "none")
@@ -249,13 +288,12 @@ server <- function(input, output, session) {
     })
   }
   
-  
+  # All plots
   output$plot_meal1 <- render_cost_plot("Meal, Inexpensive Restaurant", "currency_food")
   output$plot_meal2 <- render_cost_plot("Meal for 2 People, Mid-range Restaurant, Three-course", "currency_food")
   output$plot_wine  <- render_cost_plot("Bottle of Wine (Mid-Range)", "currency_food")
   output$plot_beer  <- render_cost_plot("Domestic Beer (0.5 liter bottle)", "currency_food")
   
-  # Grocery
   output$plot_milk     <- render_cost_plot("Milk (regular), (1 liter)", "currency_grocery")
   output$plot_bread    <- render_cost_plot("Loaf of Fresh White Bread (500g)", "currency_grocery")
   output$plot_rice     <- render_cost_plot("Rice (white), (1kg)", "currency_grocery")
@@ -269,24 +307,20 @@ server <- function(input, output, session) {
   output$plot_potato   <- render_cost_plot("Potato (1kg)", "currency_grocery")
   output$plot_water    <- render_cost_plot("Water (1.5 liter bottle)", "currency_grocery")
   
-  # Transportation
   output$plot_transport <- render_cost_plot("Monthly Pass (Regular Price)", "currency_transport")
   output$plot_ticket    <- render_cost_plot("One-way Ticket (Local Transport)", "currency_transport")
   
-  # Utilities
   output$plot_utilities <- render_cost_plot("Basic (Electricity, Heating, Cooling, Water, Garbage) for 85m2 Apartment", "currency_utilities")
   output$plot_mobile    <- render_cost_plot("Mobile Phone Monthly Plan with Calls and 10GB+ Data", "currency_utilities")
   
-  # Fitness
   output$plot_fitness <- render_cost_plot("Fitness Club, Monthly Fee for 1 Adult", "currency_fitness")
   
-  # Rent
   output$plot_rent1 <- render_cost_plot("Apartment (1 bedroom) in City Centre", "currency_rent")
   output$plot_rent2 <- render_cost_plot("Apartment (1 bedroom) Outside of Centre", "currency_rent")
   
-  # Salary
   output$plot_salary <- render_cost_plot("Average Monthly Net Salary (After Tax)", "currency_salary", reverse = TRUE)
 }
+
 
 shinyApp(ui = ui, server = server)
 

@@ -22,6 +22,7 @@ library(tibble)
 library(stringdist)
 library(fuzzyjoin)
 library(chromote)
+library(stringi)
 ```
 
 ```{r}
@@ -89,8 +90,20 @@ if (length(rows) > 0) {
 denmark_table <- denmark_table |> 
   mutate(Language = "English")
 
+normalize_danish_institution <- function(name) {
+  name |>
+    str_remove_all("\\s*\\([^\\)]+\\)") |>    
+    str_remove("^The\\s+") |>                 
+    str_squish() |>                           
+    str_replace_all(" - ", ": ") |>          
+    str_to_title()                            
+}
+
+denmark_table <- denmark_table |> 
+  mutate(Institution = map_chr(Institution, normalize_danish_institution))
 
 print(denmark_table)
+
   
 #write.csv(denmark_table, "programs_denmark.csv", row.names = FALSE)
 
@@ -316,7 +329,47 @@ master_clean <- master_spain_table |>
 
 spain_table <- bind_rows(bachelor_clean, master_clean)
 
-head(spain_table)
+normalize_spanish_institution <- function(name) {
+  name |>
+    stri_trans_general("Latin-ASCII") |>
+    str_to_upper() |>
+    str_remove_all("\\s*\\([^\\)]+\\)") |>
+    str_remove("^THE\\s+") |>
+    str_squish() |>
+    str_replace_all(" - ", ": ") |>
+    str_replace_all("^PAIS VASCO$", "UNIVERSIDAD DEL PAIS VASCO") |>
+    str_replace_all("^SALAMANCA$", "UNIVERSIDAD DE SALAMANCA") |>
+    str_replace_all("^CORUNA$", "UNIVERSIDAD DE LA CORUNA") |>
+    str_replace_all("^SEVILLA$", "UNIVERSIDAD DE SEVILLA") |>
+    str_replace_all("^OVIEDO$", "UNIVERSIDAD DE OVIEDO") |>
+    str_replace_all("^VIGO$", "UNIVERSIDAD DE VIGO") |>
+    str_replace_all("^LLEIDA$", "UNIVERSIDAD DE LLEIDA") |>
+    str_replace_all("^PABLO DE OLAVIDE$", "UNIVERSIDAD PABLO DE OLAVIDE") |>
+    str_replace_all("^CATOLICA DE MURCIA$", "UNIVERSIDAD CATOLICA DE MURCIA") |>
+    str_replace_all("^SAN PABLO CEU$", "UNIVERSIDAD SAN PABLO CEU") |>
+    str_replace_all("^CEU SAN PABLO$", "UNIVERSIDAD SAN PABLO CEU") |>
+    str_replace_all("^MIGUEL HERNANDEZ$", "UNIVERSIDAD MIGUEL HERNANDEZ") |>
+    str_replace_all("^POLITECNICA MADRID$", "UNIVERSIDAD POLITECNICA DE MADRID") |>
+    str_replace_all("^POLITECNICA CATALUNA$", "UNIVERSIDAD POLITECNICA DE CATALUNA") |>
+    str_replace_all("^EUROPEA DE VALENCIA$", "UNIVERSIDAD EUROPEA DE VALENCIA") |>
+    str_replace_all("^UVIC.*$", "UNIVERSIDAD VIC") |>
+    str_replace_all("^ROVIRA I VIRGIL$", "UNIVERSIDAD ROVIRA I VIRGILI") |>
+    str_replace_all("^POMPEU FABRA UNIVERSITY$", "UNIVERSIDAD POMPEU FABRA") |>
+    str_replace_all("^CARLOS III DE MADRID$", "UNIVERSIDAD CARLOS III") |>
+    str_replace_all("^CASTILLA LA MANCHA$", "UNIVERSIDAD DE CASTILLA LA MANCHA") |>
+    str_replace_all("^PUBLICA DE NAVARRA$", "UNIVERSIDAD PUBLICA DE NAVARRA") |>
+    str_replace_all("^UNIVERSIDAD DE MIGUEL HERNANDEZ$", "UNIVERSIDAD MIGUEL HERNANDEZ") |>
+    str_replace_all("^UNIVERSITAT", "UNIVERSIDAD") |>
+    str_replace_all("^UNIVERSITY", "UNIVERSIDAD") |>
+    str_squish() |>
+    str_to_lower()
+}
+
+spain_table <- spain_table |> 
+  mutate(University = map_chr(University, normalize_spanish_institution)) 
+
+unique(spain_table$University)
+
 
 # write.csv(spain_table, "programs_spain.csv", row.names = FALSE)
 ```
@@ -400,6 +453,39 @@ norway_table <- norway_table |>
   select(-Years_text, -ECTS_text) |> 
   mutate(Language = "English")
 
+normalize_norwegian_institution <- function(name) {
+  name |>
+    stri_trans_general("Latin-ASCII") |>
+    str_remove_all("\\s*\\([^\\)]+\\)") |>
+    str_remove_all(",\\s*$") |>
+    str_replace_all("\\s*,\\s*", ", ") |>
+    str_replace_all("(?i)uiT the arctic university of norway", "University of Tromsø") |>
+    str_replace_all("(?i)osloMet – oslo metropolitan university", "Oslo Metropolitan University") |>
+    str_replace_all("(?i)BI norwegian business school", "BI Norwegian Business School") |>
+    str_replace_all("(?i)NHH norwegian school of economics", "Norwegian School of Economics (NHH)") |>
+    str_replace_all("(?i)VID specialized university", "VID Specialized University") |>
+    str_replace_all("(?i)MF norwegian school of theology.*", "MF Norwegian School of Theology") |>
+    str_replace_all("(?i)Molde university college.*", "Molde University College") |>
+    str_replace_all("(?i)NLA university college", "NLA University College") |>
+    str_replace_all("(?i)University of south[-–]eastern norway", "University of South-Eastern Norway") |>
+    str_replace_all("(?i)Norwegian university of life sciences", "Norwegian University of Life Sciences (NMBU)") |>
+    str_replace_all("(?i)Norwegian university of science and technology", "Norwegian University of Science and Technology (NTNU)") |>
+    str_replace_all("(?i)Norwegian academy of music", "Norwegian Academy of Music") |>
+    str_replace_all("(?i)Norwegian school of sport sciences", "Norwegian School of Sport Sciences") |>
+    str_replace_all("(?i)University of inland norway", "Inland Norway University of Applied Sciences") |>
+    str_replace_all("(?i)University of agder", "University of Agder") |>
+    str_replace_all("(?i)Kristiania university college", "Kristiania University College") |>
+    str_replace_all("(?i)Fjellhaug international university college", "Fjellhaug International University College") |>
+    str_replace_all("(?i)Oslo school of architecture and design", "Oslo School of Architecture and Design") |>
+    str_replace_all("(?i)Nord university.*", "Nord University") |>
+    str_replace_all("(?i)University of bergen", "University of Bergen") |>
+    str_replace_all("(?i)University of oslo", "University of Oslo") |>
+    str_squish()
+}
+
+norway_table <- norway_table |> 
+  mutate(University = map_chr(University, normalize_norwegian_institution))
+
 View(norway_table)
 
 #write.csv(norway_table, "programs_norway.csv", row.names = FALSE)
@@ -466,7 +552,22 @@ poland_table <- poland_table |>
     grepl("russian", Programme, ignore.case = TRUE) ~ "Russian",
     TRUE ~ "English"
   ))
-  
+
+normalize_polish_institution <- function(name) {
+  name |>
+    stri_trans_general("Latin-ASCII") |>
+    str_remove_all("\\s*\\([^\\)]+\\)") |>
+    str_replace_all("Univeristy", "University") |>
+    str_replace_all("Od Gdansk", "Of Gdansk") |>
+    str_replace_all("Oh John", "Of John") |>
+    str_remove_all("(?i)^bachelor studies.*|^engineering and management.*|^food.*|^cinematography.*|^film directing.*|^interdisciplinary.*|^environmental and plant biotechnology.*|^graduate school.*") |>
+    str_squish() |>
+    str_to_title()
+}
+
+poland_table <- poland_table |> 
+  mutate(University = map_chr(University, normalize_polish_institution))
+
 View(poland_table)
 
 #write.csv(poland_table, "programs_poland.csv", row.names = FALSE)
@@ -507,6 +608,28 @@ slovenia_table <- df_raw |>
     Level = ifelse(is.na(Level), "Bachelor", Level)
   )
 
+normalize_slovenian_institution <- function(name) {
+  name |>
+    stri_trans_general("Latin-ASCII") |>
+    str_remove_all("\\s*\\([^\\)]+\\)") |>
+    str_remove_all("^The\\s+") |>
+    str_remove_all(",.*$") |> 
+    str_replace_all("(?i)^University of Ljubljana,?\\s*", "University of Ljubljana, ") |>
+    str_replace_all("(?i)^University of Maribor,?\\s*", "University of Maribor, ") |>
+    str_replace_all("(?i)^University of Nova Gorica,?\\s*", "University of Nova Gorica, ") |>
+    str_replace_all("(?i)^University of Primorska,?\\s*", "University of Primorska, ") |>
+    str_replace_all("(?i)^New University,?\\s*", "New University, ") |>
+    str_replace_all("(?i)^ALMA MATER EUROPAEA,?\\s*", "Alma Mater Europaea, ") |>
+    str_replace_all("(?i)^GEA College,?\\s*", "GEA College, ") |>
+    str_replace_all("(?i)^MLC Management and law college,?\\s*", "MLC Management and Law College, ") |>
+    str_replace_all("(?i)\\s*-\\s*", " – ") |>  
+    str_squish() |>
+    str_to_title()
+}
+
+slovenia_table <- slovenia_table |> 
+  mutate(Institution = map_chr(Institution, normalize_slovenian_institution)) 
+  
 View(slovenia_table)
 
 # write.csv(slovenia_table, "programs_slovenia.csv", row.names = FALSE)
@@ -564,6 +687,18 @@ repeat {
 }
 
 turkey_table <- bind_rows(all_data)
+
+normalize_turkish_institution <- function(name) {
+  name |>
+    stri_trans_general("Latin-ASCII") |>
+    str_squish() |>
+    str_to_lower() |>
+    str_to_title() |>
+    str_replace_all("\\bUniversity\\b", "University")
+}
+
+turkey_table <- turkey_table |> 
+  mutate(University = map_chr(University, normalize_turkish_institution))
 
 head(turkey_table)
 
@@ -715,6 +850,19 @@ View(wallonia_table)
 
 belgium_table <- bind_rows(flanders_table, wallonia_table)
 
+normalize_belgian_institution <- function(name) {
+  name |>
+    stri_trans_general("Latin-ASCII") |>
+    str_replace_all("[\r\n\t]+", " ") |>
+    str_replace_all("\\s{2,}", " ") |>
+    str_squish() |>
+    str_to_lower() |>
+    str_to_title()
+}
+
+belgium_table <- belgium_table |> 
+  mutate(Institution = map_chr(Institution, normalize_belgian_institution))
+
 View(belgium_table)
 #write.csv(belgium_table, "programs_belgium.csv", row.names = FALSE)
 ```
@@ -726,7 +874,6 @@ View(belgium_table)
 library(rvest)
 library(dplyr)
 
-# URL della pagina
 url <- "https://www.studyinestonia.ee/study/programmes/bachelors-programmes"
 
 page <- read_html(url)
@@ -836,6 +983,19 @@ estonia_table <- bind_rows(estonia_bachelors, estonia_master)
 estonia_table <- estonia_table |> 
   mutate(Language = "English")
 
+normalize_estonian_institution <- function(name) {
+  name |>
+    stri_trans_general("Latin-ASCII") |>
+    str_remove("/.*$") |>
+    str_remove_all("\\s*\\([^\\)]+\\)") |>
+    str_squish() |>
+    str_to_lower() |>
+    str_to_title()
+}
+
+estonia_table <- estonia_table |> 
+  mutate(University = map(University, normalize_estonian_institution))
+
 View(estonia_table)
 #write.csv(estonia_table, "programs_estonia.csv", row.names = FALSE)
 
@@ -895,8 +1055,20 @@ lithuania_table <- lithuania_table |>
     contains_cyrillic(Title) ~ "Russian",
     TRUE ~ "English"
   ))
-  
 
+normalize_lithuanian_institution <- function(name) {
+  name |>
+    stri_trans_general("Latin-ASCII") |>
+    str_remove("/.*$") |>
+    str_remove_all("\\s*\\([^\\)]+\\)") |>
+    str_squish() |>
+    str_to_lower() |>
+    str_to_title()
+}
+
+lithuania_table <- lithuania_table |> 
+  mutate(University = map_chr(University, normalize_lithuanian_institution)) 
+  
 View(lithuania_table)
 #write.csv(lithuania_table, "programs_lithuania.csv", row.names = FALSE)
 
@@ -1264,7 +1436,19 @@ austria_table <- bind_rows(
     )
   )
 
-  
+normalize_austrian_institution <- function(name) {
+  name |>
+    stri_trans_general("Latin-ASCII") |>
+    str_remove(",.*$") |>
+    str_remove_all("\\s*\\([^\\)]+\\)") |>
+    str_squish() |>
+    str_to_lower() |>
+    str_to_title()
+}
+
+austria_table <- austria_table |> 
+  mutate(University_Name = map_chr(University_Name, normalize_austrian_institution))
+
 View(austria_table)
 
 #write.csv(austria_table, "programs_austria.csv", row.names = FALSE)
@@ -1472,6 +1656,18 @@ sweden_table <- bind_rows(lapply(names(category_urls), function(field) {
   scrape_sweden_programs(category_urls[[field]], field)
 }))
 
+normalize_swedish_institution <- function(name) {
+  name |>
+    stri_trans_general("Latin-ASCII") |>
+    str_remove_all("\\s*\\([^\\)]+\\)") |>
+    str_squish() |>
+    str_to_lower() |>
+    str_to_title()
+}
+
+sweden_table <- sweden_table |> 
+  mutate(University = map_chr(University, normalize_swedish_institution)) 
+  
 View(sweden_table)
 
 #write.csv(sweden_table, "programs_sweden.csv", row.names = FALSE)
@@ -1633,9 +1829,27 @@ germany_table <- germany_table %>%
     Institution = gsub("•", "", Institution) %>% trimws()
   )
 
+normalize_german_institution <- function(name) {
+  name |>
+    stri_trans_general("Latin-ASCII") |>
+    str_remove_all("\\s*\\([^\\)]+\\)") |>        
+    str_remove_all("\\s*/.*$") |>                 
+    str_remove_all("\\s*\\|.*$") |>               
+    str_remove_all("\\s*,.*(University|Hochschule|Institut|College).*") |> 
+    str_squish() |>                               
+    str_to_lower() |>                             
+    str_to_title()                                
+}
+
+germany_table <- germany_table |> 
+  mutate(Institution = map_chr(Institution, normalize_german_institution)) 
+
 View(germany_table)
 
 #write.csv(germany_table, "programs_germany.csv", row.names = FALSE)
+
+length(results)                       # Quante chiamate sono state fatte
+sum(map_lgl(results, ~ !is.null(.x$result)))  # Quante hanno avuto successo
 
 
 ```
@@ -1654,7 +1868,6 @@ luxembourg_table <- map_dfr(cards, function(card) {
   link  <- card %>% html_element("a.card__link") %>% html_attr("href")
   link  <- if (!is.na(link)) paste0("https://www.uni.lu", link) else NA
 
-  # ✅ Extract language lines from <li> inside card__lang_list
   lang_list <- html_elements(card, "ul.card__lang_list li")
 
   if (length(lang_list) > 0) {
@@ -1731,6 +1944,23 @@ serbia_table <- results %>%
   map("result") %>%
   compact() %>%
   bind_rows()
+
+normalize_serbian_institution <- function(name) {
+  name |>
+    stri_trans_general("Latin-ASCII") |>
+    str_remove_all('\\"[^\\"]*\\"') |>
+    str_remove_all("\\s*\\([^\\)]+\\)") |>
+    str_remove_all("\\s*/.*$") |>
+    str_remove_all("\\s*\\|.*$") |>
+    str_remove_all("\\s*-.*$") |>
+    str_remove_all("\\s*,.*$") |>
+    str_squish() |>
+    str_to_lower() |>
+    str_to_title()
+}
+
+serbia_table <- serbia_table |> 
+  mutate(Institution = map_chr(Institution, normalize_serbian_institution)) 
 
 View(serbia_table)
 
@@ -2390,3 +2620,5 @@ programs <- programs |> select(-Institution_clean) |>
 
 
 ```
+
+
