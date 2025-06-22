@@ -15,11 +15,11 @@ Austria, Belgium, Croatia, Cyprus, Denmark, Estonia, Germany, Lithuania, Luxembo
 
 🧩 Features
 - Compare university programs across multiple EU countries
--Filter by:
-  -Language of instruction
-  -Type of degree (e.g. Bachelor's, Master's)
-  -Number of ECTS credits
-  -Tuition (binary: 'Yes' or 'No' to indicate whether tuition fees apply)
-  -Country
--Access direct links to official university program pages
--Explore a second tab that allows comparison of the cost of living across all included countries
+- Filter by:
+  - Language of instruction
+  - Type of degree (e.g. Bachelor's, Master's)
+  - Number of ECTS credits
+  - Tuition (binary: 'Yes' or 'No' to indicate whether tuition fees apply)
+  - Country
+- Access direct links to official university program pages
+- Explore a second tab that allows comparison of the cost of living across all included countries
