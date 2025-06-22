@@ -1,6 +1,6 @@
 Study in Europe – Master's Final Project
 
-This repository contains the code and data for my final master’s project, Study in Europe, a web-based application designed to help prospective students compare university programs across 17 EU countries. By scraping official education websites (listed on the Study in Europe portal), the platform provides a centralized and user-friendly comparison tool for international academic decision-making.
+This repository contains the code and data for my final master’s project, Study in Europe, a web-based application designed to help prospective students compare university programs across 16 EU countries. By scraping official education websites (listed on the Study in Europe portal), the platform provides a centralized and user-friendly comparison tool for international academic decision-making.
 
 📚 Project Overview
 Choosing the right university program in Europe can be overwhelming due to the variety of offerings and differing educational systems. This project aims to simplify that process through a structured and data-driven solution:
