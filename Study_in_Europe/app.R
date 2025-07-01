@@ -32,6 +32,22 @@ bold_if_selected <- function(country, selected_countries) {
 
 # === UI ===
 ui <- navbarPage("Study in Europe",
+                 header = tags$head(
+                   tags$style(HTML("
+                     body {
+                       font-size: 18px !important;
+                     }
+                     h1, h2, h3, h4 {
+                       font-size: 22px !important;
+                     }
+                     .navbar, .tab-pane, .dataTables_wrapper {
+                       font-size: 18px !important;
+                     }
+                     .leaflet-popup-content {
+                       font-size: 16px !important;
+                     }
+                   "))
+                 ),
                  tabPanel("Programs",
                           fluidPage(
                             titlePanel(
